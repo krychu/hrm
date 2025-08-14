@@ -1,7 +1,8 @@
 import torch
 import random
 from collections import deque
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, TensorDataset
+from dataclasses import dataclass
 
 FLOOR = 0
 WALL  = 1
@@ -9,16 +10,22 @@ START = 2
 END   = 3
 PATH  = 4
 
+@dataclass
+class BoardPathParameters:
+    board_size: int
+    train_count: int
+    val_count: int
+    wall_prob: float
+
 def get_vocab_cnt():
     return 5
 
-def generate_board_4x4(max_wall_prob=0.3):
+def generate_board(size=4, max_wall_prob=0.3):
     """
-    Generate a single valid 4x4 board (input, target).
+    Generate a single valid board (input, target).
     input:  ints {0=FLOOR,1=WALL,2=START,3=END}
     target: same but with shortest path cells marked as PATH=4
     """
-    size = 4
 
     while True:  # loop until we make a solvable board
         board = [[FLOOR]*size for _ in range(size)]
@@ -65,26 +72,62 @@ def generate_board_4x4(max_wall_prob=0.3):
             return torch.tensor(board, dtype=torch.long), torch.tensor(target, dtype=torch.long)
         # else: loop again
 
-class BoardPathDataset(Dataset):
-    def __init__(self, size=4, count=1000, wall_prob=0.3):
-        self.size = size
-        self.count = count
-        self.wall_prob = wall_prob
+def generate_unique_samples(count, board_size=4, max_wall_prob=0.3):
+    """Generate unique board samples with deduplication."""
+    inputs, targets = [], []
+    seen_boards = set()
 
-    def __len__(self):
-        return self.count
+    while len(inputs) < count:
+        board, target = generate_board(board_size, max_wall_prob)
+        # Use board tensor as hashable key for deduplication
+        board_key = tuple(board.flatten().tolist())
 
-    def __getitem__(self, idx):
-        x, y = generate_board_4x4(max_wall_prob=self.wall_prob)
-        return x.flatten(), y.flatten()  # each is [S]
+        if board_key not in seen_boards:
+            seen_boards.add(board_key)
+            inputs.append(board.flatten())
+            targets.append(target.flatten())
+
+    return torch.stack(inputs), torch.stack(targets)
+
+def build_datasets(params: BoardPathParameters):
+    """Build train and validation datasets with guaranteed no overlap."""
+    print(f"Generating {params.train_count + params.val_count} unique samples...")
+    inputs, targets = generate_unique_samples(
+        params.train_count + params.val_count,
+        params.board_size,
+        params.wall_prob
+    )
+
+    train_inputs = inputs[:params.train_count]
+    train_targets = targets[:params.train_count]
+    val_inputs = inputs[params.train_count:]
+    val_targets = targets[params.train_count:]
+
+    return (
+        TensorDataset(train_inputs, train_targets),
+        TensorDataset(val_inputs, val_targets)
+    )
+
+def boardpath_summary(params: BoardPathParameters) -> None:
+    print("BoardPath Dataset Parameters:")
+    print("-" * 31)
+    print(f"{'board_size':<20} {params.board_size:>10}")
+    print(f"{'seq_len':<20} {params.board_size * params.board_size:>10}")
+    print(f"{'train_count':<20} {params.train_count:>10}")
+    print(f"{'val_count':<20} {params.val_count:>10}")
+    print(f"{'wall_prob':<20} {params.wall_prob:>10}")
+    print(f"{'vocab_cnt':<20} {get_vocab_cnt():>10}")
+    print()
 
 if __name__ == '__main__':
-    dataset = BoardPathDataset(size=4, count=5000, wall_prob=0.3)
-    loader = DataLoader(dataset, batch_size=32, shuffle=True)
+    params = BoardPathParameters(board_size=4, train_count=5000, val_count=1000, wall_prob=0.3)
+    boardpath_summary(params)
+    train_dataset, val_dataset = build_datasets(params)
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
 
-    for x_bs, y_bs in loader:
+    for x_bs, y_bs in train_loader:
         print("Input board:")
-        print(x_bs[0].view(4,4))
+        print(x_bs[0].view(params.board_size, params.board_size))
         print("Target board:")
-        print(y_bs[0].view(4,4))
+        print(y_bs[0].view(params.board_size, params.board_size))
         break

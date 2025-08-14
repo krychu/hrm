@@ -9,6 +9,7 @@ from hrm.hrm import *
 from datasets.build_boardpath_dataset import *
 
 def main(
+        boardpath_params: BoardPathParameters,
         hrm_params: HRMParameters,
         hrm_train_params: HRMTrainParameters,
         train_loader: DataLoader,
@@ -37,6 +38,8 @@ def main(
         dropout=hrm_params.dropout,
     ).to(device)
 
+    print()
+    boardpath_summary(boardpath_params)
     hrm_summary(hrm_params, hrm_train_params, hrm, device)
 
     ce_loss = nn.CrossEntropyLoss()
@@ -72,14 +75,15 @@ def main(
     print(f"Done. Model saved to: {filename}, best val loss: {best_val_loss}")
 
 def get_config_1():
-    board_size = 4
-    train_size = 5000
-    val_size = 500
-    wall_prob = 0.3
+    boardpath_params = BoardPathParameters(
+        board_size=4,
+        train_count=5000,
+        val_count=500,
+        wall_prob=0.3
+    )
 
     hrm_params = HRMParameters(
-        # board_size=board_size,
-        seq_len=board_size * board_size,
+        seq_len=boardpath_params.board_size * boardpath_params.board_size,
         vocab_cnt=get_vocab_cnt(),
         d_model=128,
         nhead=4,
@@ -100,8 +104,7 @@ def get_config_1():
         lr=3e-4
     )
 
-    train_ds = BoardPathDataset(size=board_size, count=train_size, wall_prob=wall_prob)
-    val_ds = BoardPathDataset(size=board_size, count=val_size, wall_prob=wall_prob)
+    train_ds, val_ds = build_datasets(boardpath_params)
     train_loader = DataLoader(
         train_ds,
         batch_size=hrm_train_params.batch_size,
@@ -113,11 +116,12 @@ def get_config_1():
         shuffle=False
     )
 
-    return hrm_params, hrm_train_params, train_loader, val_loader
+    return boardpath_params, hrm_params, hrm_train_params, train_loader, val_loader
 
 if __name__ == '__main__':
-    hrm_params, hrm_train_params, train_loader, val_loader = get_config_1()
+    boardpath_params, hrm_params, hrm_train_params, train_loader, val_loader = get_config_1()
     main(
+        boardpath_params,
         hrm_params,
         hrm_train_params,
         train_loader,

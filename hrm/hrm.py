@@ -270,7 +270,6 @@ def evaluate(
 def hrm_summary(hrm_params: HRMParameters, hrm_train_params: HRMTrainParameters, hrm: HRM, device: torch.device) -> None:
     trainable_params = sum(p.numel() for p in hrm.parameters() if p.requires_grad)
 
-    print()
     print("HRM Parameters:")
     print("-" * 31)
     print(f"{'seq_len':<20} {hrm_params.seq_len:>10}")
