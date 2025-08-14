@@ -49,7 +49,12 @@ def main(
         weight_decay=hrm_train_params.weight_decay
     )
 
-    initial_val_loss, initial_val_acc = evaluate(hrm, val_loader, device)
+    initial_val_loss, initial_val_acc = evaluate(
+        hrm=hrm,
+        segment_cnt=hrm_params.infer_segment_cnt,
+        loader=val_loader,
+        device=device
+    )
     print(f"[val] initial loss: {initial_val_loss:.4f} acc: {initial_val_acc:.3f}")
 
     best_val_loss = math.inf
@@ -62,10 +67,15 @@ def main(
             ce_loss=ce_loss,
             optimizer=optimizer,
             device=device,
-            segment_cnt=hrm_params.segment_cnt,
+            segment_cnt=hrm_train_params.train_segment_cnt,
             grad_clip=hrm_train_params.grad_clip
         )
-        val_loss, val_acc = evaluate(hrm, val_loader, device)
+        val_loss, val_acc = evaluate(
+            hrm=hrm,
+            segment_cnt=hrm_params.infer_segment_cnt,
+            loader=val_loader,
+            device=device
+        )
 
         epoch_time = time.time() - epoch_start_time
 
@@ -95,11 +105,12 @@ def get_config_1():
         L_layer_cnt=4,
         H_cycle_cnt=2,
         L_cycle_cnt=2,
-        segment_cnt=2,
+        infer_segment_cnt=1,
         dropout=0.1
     )
 
     hrm_train_params = HRMTrainParameters(
+        train_segment_cnt=2,
         epoch_cnt=10,
         weight_decay=0.01, # default: 0.01, try 0.1
         grad_clip=None, # 1.0
