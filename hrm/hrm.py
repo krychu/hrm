@@ -233,7 +233,7 @@ def train_one_epoch(
             zH, zL = z_bsd
             z_bsd = (zH.detach(), zL.detach())
 
-            total_loss += float(loss.detach()) * B * S
+            total_loss += float(loss.detach())
             total_tokens += B * S
 
     print("\r", end='', flush=True)
@@ -247,11 +247,12 @@ def evaluate(
     device: torch.device,
 ):
     hrm.eval()
-    ce = nn.CrossEntropyLoss(reduction="sum")
+    ce = nn.CrossEntropyLoss()
     total_loss = 0.0
     total_correct = 0
     total_tokens = 0
-
+    
+    first_batch = True
     for x_bs, y_bs in loader:
         x_bs = x_bs.to(device)
         y_bs = y_bs.to(device)
@@ -266,6 +267,32 @@ def evaluate(
 
         loss = ce(logits_bsv.transpose(1, 2), y_bs)
         preds = logits_bsv.argmax(dim=-1) # [B,S]
+        
+        # DEBUG: Check class predictions during validation
+        # pred_counts = torch.bincount(preds.flatten(), minlength=5)
+        # target_counts = torch.bincount(y_bs.flatten(), minlength=5)
+        # print(f"[DEBUG] Pred counts: {pred_counts.cpu().numpy()} | Target counts: {target_counts.cpu().numpy()}")
+        
+        # DEBUG: Show first sample as visual board
+        if first_batch:
+            symbols = {0: '.', 1: '#', 2: 'S', 3: 'E', 4: '*'}
+            b = 4
+            print("[DEBUG] First validation sample:")
+            for idx in range(3):
+                input_board = x_bs[idx].view(b, b)
+                target_board = y_bs[idx].view(b, b) 
+                pred_board = preds[idx].view(b, b)
+            
+                print("Input:   Target:  Predicted:")
+                for i in range(b):
+                    input_row = ' '.join(symbols.get(int(cell), str(int(cell))) for cell in input_board[i])
+                    target_row = ' '.join(symbols.get(int(cell), str(int(cell))) for cell in target_board[i])
+                    pred_row = ' '.join(symbols.get(int(cell), str(int(cell))) for cell in pred_board[i])
+                    print(f"{input_row}   {target_row}   {pred_row}")
+
+            print()
+            first_batch = False
+        
         total_correct += (preds == y_bs).sum().item()
         total_tokens += y_bs.numel()
         total_loss += float(loss)
