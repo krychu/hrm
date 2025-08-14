@@ -7,21 +7,21 @@ from typing import *
 
 @dataclass
 class HRMParameters:
-    #board_size: int
-    seq_len: int # flattened board
-    vocab_cnt: int # number of distinct classes
-    d_model: int # dim of embeddings and hidden state
-    nhead: int # number of heads in mha
-    dim_feedforward: int # dim of ff network in mha
+    seq_len: int # Can be a flattened board
+    vocab_cnt: int # Number of classes per sequence item
+    d_model: int # Dim of embeddings and hidden state
+    nhead: int # Number of heads in mha
+    dim_feedforward: int # Dim of ff network in mha
     H_layer_cnt: int # number of ???
     L_layer_cnt: int
-    H_cycle_cnt: int
-    L_cycle_cnt: int
-    segment_cnt: int # number of forward passes per batch, backprop after each segment
+    H_cycle_cnt: int # Number of H module iterations
+    L_cycle_cnt: int # Number of L module iterations per one H iteration
+    infer_segment_cnt: int # Number of forward passes per batch at inference time (how hard to think?)
     dropout: float
 
 @dataclass
 class HRMTrainParameters:
+    train_segment_cnt: int # Number of forward passes per batch, at training time (backprop after each segment)
     epoch_cnt: int
     weight_decay: float
     grad_clip: float | None
@@ -239,11 +239,12 @@ def train_one_epoch(
 
 @torch.no_grad()
 def evaluate(
-    model: HRM,
+    hrm: HRM,
+    segment_cnt: int,
     loader: DataLoader,
     device: torch.device,
 ):
-    model.eval()
+    hrm.eval()
     ce = nn.CrossEntropyLoss(reduction="sum")
     total_loss = 0.0
     total_correct = 0
@@ -254,17 +255,21 @@ def evaluate(
         y_bs = y_bs.to(device)
 
         # fresh state each eval batch (stateless)
-        z = model.init_z(x_bs)
-        (zH, zL), logits_bsv = model(z, x_bs)  # single segment at eval
+        z = hrm.init_z(x_bs)
+
+        # Run a fixed number of segments (think time)
+        for _ in range(segment_cnt):
+            z, logits_bsv = hrm(z, x_bs)
+            z = (z[0].detach(), z[1].detach())
+
         loss = ce(logits_bsv.transpose(1, 2), y_bs)
-
-        preds = logits_bsv.argmax(dim=-1)   # [B,S]
+        preds = logits_bsv.argmax(dim=-1) # [B,S]
         total_correct += (preds == y_bs).sum().item()
-        total_tokens  += y_bs.numel()
-        total_loss    += float(loss)
+        total_tokens += y_bs.numel()
+        total_loss += float(loss)
 
-    avg_loss = total_loss / max(1, total_tokens)
-    acc = total_correct / max(1, total_tokens)
+    avg_loss = total_loss / total_tokens
+    acc = total_correct / total_tokens
     return avg_loss, acc
 
 def hrm_summary(hrm_params: HRMParameters, hrm_train_params: HRMTrainParameters, hrm: HRM, device: torch.device) -> None:
@@ -281,11 +286,12 @@ def hrm_summary(hrm_params: HRMParameters, hrm_train_params: HRMTrainParameters,
     print(f"{'L_layer_cnt':<20} {hrm_params.L_layer_cnt:>10}")
     print(f"{'H_cycle_cnt':<20} {hrm_params.H_cycle_cnt:>10}")
     print(f"{'L_cycle_cnt':<20} {hrm_params.L_cycle_cnt:>10}")
-    print(f"{'segment_cnt':<20} {hrm_params.segment_cnt:>10}")
+    print(f"{'infer_segment_cnt':<20} {hrm_params.infer_segment_cnt:>10}")
     print(f"{'dropout':<20} {hrm_params.dropout:>10}")
 
     print("\nHRM Training Parameters:")
     print("-" * 31)
+    print(f"{'train_segment_cnt':<20} {hrm_train_params.train_segment_cnt:>10}")
     print(f"{'epoch_cnt':<20} {hrm_train_params.epoch_cnt:>10}")
     print(f"{'weight_decay':<20} {hrm_train_params.weight_decay:>10}")
     grad_clip_str = "None" if hrm_train_params.grad_clip is None else str(hrm_train_params.grad_clip)
