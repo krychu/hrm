@@ -23,7 +23,6 @@ def main(
         device = torch.device("mps")
     else:
         device = torch.device("cpu")
-    torch.manual_seed(42)
 
     hrm = HRM(
         vocab_cnt=hrm_params.vocab_cnt,
@@ -133,6 +132,7 @@ def get_config_1():
     return boardpath_params, hrm_params, hrm_train_params, train_loader, val_loader
 
 if __name__ == '__main__':
+    set_all_seeds(42)
     boardpath_params, hrm_params, hrm_train_params, train_loader, val_loader = get_config_1()
     main(
         boardpath_params,

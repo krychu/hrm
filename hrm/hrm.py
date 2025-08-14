@@ -4,6 +4,8 @@ import torch.nn as nn
 import math
 from torch.utils.data import DataLoader
 from typing import *
+import random
+import numpy as np
 
 @dataclass
 class HRMParameters:
@@ -304,3 +306,15 @@ def hrm_summary(hrm_params: HRMParameters, hrm_train_params: HRMTrainParameters,
     print(f"{'trainable_params':<20} {trainable_params:>10_}")
     print(f"{'device':<20} {str(device):>10}")
     print()
+
+def set_all_seeds(seed: int):
+    torch.manual_seed(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+
+    if torch.backends.mps.is_available():
+        torch.mps.manual_seed(seed)
