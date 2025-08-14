@@ -84,7 +84,8 @@ def main(
             best_val_loss = val_loss
             torch.save(hrm.state_dict(), filename)
 
-    print(f"Done. Model saved to: {filename}, best val loss: {best_val_loss}")
+    print()
+    print(f"Model saved to: {filename}, best val loss: {best_val_loss:.4f}")
 
 def get_config_1():
     boardpath_params = BoardPathParameters(
@@ -110,7 +111,7 @@ def get_config_1():
 
     hrm_train_params = HRMTrainParameters(
         train_segment_cnt=2,
-        epoch_cnt=10,
+        epoch_cnt=1,
         weight_decay=0.01, # default: 0.01, try 0.1
         grad_clip=None, # 1.0
         batch_size=64,
