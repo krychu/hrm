@@ -49,6 +49,9 @@ def main(
         weight_decay=hrm_train_params.weight_decay
     )
 
+    initial_val_loss, initial_val_acc = evaluate(hrm, val_loader, device)
+    print(f"[val] initial loss: {initial_val_loss:.4f} acc: {initial_val_acc:.3f}")
+
     best_val_loss = math.inf
     for epoch_idx in range(hrm_train_params.epoch_cnt):
         epoch_start_time = time.time()
