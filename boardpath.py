@@ -28,13 +28,19 @@ def main(
         vocab_cnt=hrm_params.vocab_cnt,
         seq_len=hrm_params.seq_len,
         d_model=hrm_params.d_model,
-        nhead=hrm_params.nhead,
-        dim_feedforward=hrm_params.dim_feedforward,
-        H_layers=hrm_params.H_layer_cnt,
-        L_layers=hrm_params.L_layer_cnt,
-        H_cycles=hrm_params.H_cycle_cnt,
-        L_cycles=hrm_params.L_cycle_cnt,
+        head_cnt=hrm_params.head_cnt,
+        sdpa_dropout=hrm_params.sdpa_dropout,
+        bias_qkv=hrm_params.bias_qkv,
+        bias_o=hrm_params.bias_o,
+        expansion=hrm_params.expansion,
+        elementwise_affine=hrm_params.elementwise_affine,
         dropout=hrm_params.dropout,
+        H_block_cnt=hrm_params.H_block_cnt,
+        L_block_cnt=hrm_params.L_block_cnt,
+        H_cycle_cnt=hrm_params.H_cycle_cnt,
+        L_cycle_cnt=hrm_params.L_cycle_cnt,
+        infer_segment_cnt=hrm_params.infer_segment_cnt,
+        head_bias=hrm_params.head_bias
     ).to(device)
 
     print()
@@ -87,6 +93,51 @@ def main(
     print()
     print(f"Model saved to: {filename}, best val loss: {best_val_loss:.4f}")
 
+# def get_config_1():
+#     boardpath_params = BoardPathParameters(
+#         board_size=4,
+#         train_count=5000,
+#         val_count=500,
+#         wall_prob=0.3
+#     )
+
+#     hrm_params = HRMParameters(
+#         seq_len=boardpath_params.board_size * boardpath_params.board_size,
+#         vocab_cnt=get_vocab_cnt(),
+#         d_model=128,
+#         nhead=4,
+#         dim_feedforward=256,
+#         H_layer_cnt=4,
+#         L_layer_cnt=4,
+#         H_cycle_cnt=2,
+#         L_cycle_cnt=2,
+#         infer_segment_cnt=1,
+#         dropout=0.1
+#     )
+
+#     hrm_train_params = HRMTrainParameters(
+#         train_segment_cnt=2,
+#         epoch_cnt=1,
+#         weight_decay=0.01, # default: 0.01, try 0.1
+#         grad_clip=None, # 1.0
+#         batch_size=64,
+#         lr=3e-4
+#     )
+
+#     train_ds, val_ds = build_datasets(boardpath_params)
+#     train_loader = DataLoader(
+#         train_ds,
+#         batch_size=hrm_train_params.batch_size,
+#         shuffle=True
+#     )
+#     val_loader = DataLoader(
+#         val_ds,
+#         batch_size=hrm_train_params.batch_size,
+#         shuffle=False
+#     )
+
+#     return boardpath_params, hrm_params, hrm_train_params, train_loader, val_loader
+
 def get_config_1():
     boardpath_params = BoardPathParameters(
         board_size=4,
@@ -99,19 +150,24 @@ def get_config_1():
         seq_len=boardpath_params.board_size * boardpath_params.board_size,
         vocab_cnt=get_vocab_cnt(),
         d_model=128,
-        nhead=4,
-        dim_feedforward=256,
-        H_layer_cnt=4,
-        L_layer_cnt=4,
+        head_cnt=4,
+        sdpa_dropout=0.1,
+        bias_qkv=False,
+        bias_o=False,
+        expansion=2,
+        elementwise_affine=True,
+        dropout=0.1,
+        H_block_cnt=4,
+        L_block_cnt=4,
         H_cycle_cnt=2,
         L_cycle_cnt=2,
         infer_segment_cnt=1,
-        dropout=0.1
+        head_bias=False
     )
 
     hrm_train_params = HRMTrainParameters(
         train_segment_cnt=2,
-        epoch_cnt=1,
+        epoch_cnt=10,
         weight_decay=0.01, # default: 0.01, try 0.1
         grad_clip=None, # 1.0
         batch_size=64,
