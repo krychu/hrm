@@ -37,20 +37,6 @@ class HRMParameters:
     # head
     head_bias: bool
 
-# @dataclass
-# class HRMParameters:
-#     seq_len: int # Can be a flattened board
-#     vocab_cnt: int # Number of classes per sequence item
-#     d_model: int # Dim of embeddings and hidden state
-#     nhead: int # Number of heads in mha
-#     dim_feedforward: int # Dim of ff network in mha
-#     H_layer_cnt: int # number of ???
-#     L_layer_cnt: int
-#     H_cycle_cnt: int # Number of H module iterations
-#     L_cycle_cnt: int # Number of L module iterations per one H iteration
-#     infer_segment_cnt: int # Number of forward passes per batch at inference time (how hard to think?)
-#     dropout: float
-
 @dataclass
 class HRMTrainParameters:
     train_segment_cnt: int # Number of forward passes per batch, at training time (backprop after each segment)
@@ -321,140 +307,6 @@ class HRM(nn.Module):
         y_logits_bsc = self.head(zH_bsd)
         return (zH_bsd, zL_bsd), y_logits_bsc
 
-# class ReasoningModule(nn.Module):
-#     def __init__(self,
-#                  d_model: int,
-#                  nhead: int,
-#                  dim_feedforward: int,
-#                  num_layers: int,
-#                  dropout: float = 0.0
-#                  ):
-#         super().__init__()
-#         encoder_layer = nn.TransformerEncoderLayer(
-#             d_model=d_model,
-#             nhead=nhead,
-#             dim_feedforward=dim_feedforward,
-#             dropout=dropout,
-#             activation="gelu",
-#             batch_first=True,
-#             norm_first=True
-#         )
-#         self.encoder = nn.TransformerEncoder(
-#             encoder_layer,
-#             num_layers=num_layers,
-#             enable_nested_tensor=False # suppress test warnings
-#         )
-
-#     def forward(
-#             self,
-#             z_bsd: torch.Tensor,
-#             x_bsd_injection: torch.Tensor
-#     ) -> torch.Tensor:
-#         """
-#         z_bsd: FloatTensor [B,S,D]
-#         x_bsd_injection: FloatTensor [B,S,D]
-#         y_bsd: FloatTensor [B,S,D]
-
-#         D = d_model
-#         """
-#         x_bsd = z_bsd + x_bsd_injection
-#         y_bsd = self.encoder(x_bsd)
-#         return y_bsd
-
-# class HRM(nn.Module):
-#     def __init__(self,
-#                  vocab_cnt: int,
-#                  seq_len: int,
-#                  d_model: int,
-#                  nhead: int,
-#                  dim_feedforward: int,
-#                  H_layers: int,
-#                  L_layers: int,
-#                  H_cycles: int,
-#                  L_cycles: int,
-#                  dropout: float = 0.0,
-#                  ):
-#         super().__init__()
-#         self.seq_len = seq_len
-#         self.d_model = d_model
-#         self.L_cycles = L_cycles
-#         self.H_cycles = H_cycles
-#         self.embed = InputEmbedding(
-#             vocab_cnt=vocab_cnt,
-#             seq_len=seq_len,
-#             embedding_dim=d_model
-#         )
-#         self.H = ReasoningModule(
-#             d_model=d_model,
-#             nhead=nhead,
-#             dim_feedforward=dim_feedforward,
-#             num_layers=H_layers,
-#             dropout=dropout
-#         )
-#         self.L = ReasoningModule(
-#             d_model=d_model,
-#             nhead=nhead,
-#             dim_feedforward=dim_feedforward,
-#             num_layers=L_layers,
-#             dropout=dropout
-#         )
-#         self.head = nn.Linear(
-#             in_features=d_model,
-#             out_features=vocab_cnt,
-#             bias=False
-#         )
-
-#         # Learnable initial templates (broadcast to [B, S, D] on demand)
-#         self.zH_init = nn.Parameter(torch.zeros(1, 1, d_model))
-#         self.zL_init = nn.Parameter(torch.zeros(1, 1, d_model))
-#         nn.init.normal_(self.zH_init, mean=0.0, std=1.0/math.sqrt(d_model))
-#         nn.init.normal_(self.zL_init, mean=0.0, std=1.0/math.sqrt(d_model))
-
-#     @torch.no_grad() # Not strictly needed here
-#     def init_z(
-#             self,
-#             x_bs: torch.Tensor
-#     ) -> Tuple[torch.Tensor, torch.Tensor]:
-#         """Broadcast learned templates to [B,S,D]. Call once before the first
-#         segment."""
-#         B, S = x_bs.shape
-#         assert S == self.seq_len
-#         device = x_bs.device
-#         dtype = next(self.embed.parameters()).dtype
-#         zH = self.zH_init.to(device=device, dtype=dtype).expand(B, S, -1).contiguous()
-#         zL = self.zL_init.to(device=device, dtype=dtype).expand(B, S, -1).contiguous()
-#         return zH, zL
-
-#     def forward(self,
-#                 zs_bsd: Tuple[torch.Tensor, torch.Tensor],
-#                 x_bs: torch.Tensor
-#                 ):
-#         """
-#         zs_bsd: (zH, zL) each [B,S,D]
-#                 Hidden state from previous segment (detached before passing in)
-#         x_bs: [B,S], token ids (ints)
-#         returns: (zH, zL), logits [B,S,C]
-
-#         S = seq_len
-#         D = d_model
-#         """
-
-#         zH_bsd, zL_bsd = zs_bsd
-#         x_bsd = self.embed(x_bs)
-
-#         with torch.no_grad():
-#             for idx in range(self.H_cycles * self.L_cycles - 1):
-#                 zL_bsd = self.L(zL_bsd, zH_bsd + x_bsd)
-
-#                 if (idx+1) % self.L_cycles == 0:
-#                     zH_bsd = self.H(zH_bsd, zL_bsd)
-
-#         zL_bsd = self.L(zL_bsd, zH_bsd + x_bsd)
-#         zH_bsd = self.H(zH_bsd, zL_bsd)
-
-#         y_logits_bsc = self.head(zH_bsd)
-#         return (zH_bsd, zL_bsd), y_logits_bsc
-
 def train_one_epoch(
         hrm: HRM,
         loader: DataLoader,
@@ -516,6 +368,7 @@ def evaluate(
     total_correct = 0
     total_tokens = 0
 
+    first_batch = True
     for x_bs, y_bs in loader:
         x_bs = x_bs.to(device)
         y_bs = y_bs.to(device)
@@ -530,6 +383,27 @@ def evaluate(
 
         loss = ce(logits_bsv.transpose(1, 2), y_bs)
         preds = logits_bsv.argmax(dim=-1) # [B,S]
+
+        # DEBUG: Show first sample as visual board
+        if first_batch and False:
+            symbols = {0: '.', 1: '#', 2: 'S', 3: 'E', 4: '*'}
+            b = 4
+            print("[DEBUG] First validation sample:")
+            for idx in range(3):
+                input_board = x_bs[idx].view(b, b)
+                target_board = y_bs[idx].view(b, b) 
+                pred_board = preds[idx].view(b, b)
+
+                print("Input:   Target:  Predicted:")
+                for i in range(b):
+                    input_row = ' '.join(symbols.get(int(cell), str(int(cell))) for cell in input_board[i])
+                    target_row = ' '.join(symbols.get(int(cell), str(int(cell))) for cell in target_board[i])
+                    pred_row = ' '.join(symbols.get(int(cell), str(int(cell))) for cell in pred_board[i])
+                    print(f"{input_row}   {target_row}   {pred_row}")
+
+            print()
+            first_batch = False
+
         total_correct += (preds == y_bs).sum().item()
         total_tokens += y_bs.numel()
         total_loss += float(loss)
