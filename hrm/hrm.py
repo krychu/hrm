@@ -21,7 +21,7 @@ class HRMParameters:
     bias_o: bool
 
     # hrm block
-    expansion: int # swiglu hidden size multiplier (after attn)
+    expansion: float # swiglu hidden size multiplier (after attn)
     elementwise_affine: bool # rms norm learnable scale
     dropout: float # after attention and mlp
 
@@ -71,6 +71,7 @@ class InputEmbedding(nn.Module):
         x_bsd_tok = self.tok(x_bs) # [B, S, D]
         x_sd_pos = self.pos(self.pos_idx) # [S, D]
         x_1sd_pos = x_sd_pos.unsqueeze(0) # [1, S, D]
+        # TODO: no additional scaling by 1/sqrt(2)?
         y_bsd = self.scale * (x_bsd_tok + x_1sd_pos)
         return y_bsd
 
@@ -119,7 +120,7 @@ class SDPAttention(nn.Module):
         return x_bsd
 
 class SwiGLU(nn.Module):
-    def __init__(self, d_model: int, expansion: int):
+    def __init__(self, d_model: int, expansion: float):
         super().__init__()
         # ref snaps to multiples of 256; we simplify
         inner = int(expansion * d_model * 2 / 3)
@@ -139,7 +140,7 @@ class HRMBlock(nn.Module):
             sdpa_dropout: float,
             bias_qkv: bool,
             bias_o: bool,
-            expansion: int,
+            expansion: float,
             elementwise_affine: bool,
             dropout: float # after attn and mlp
     ):
@@ -152,8 +153,8 @@ class HRMBlock(nn.Module):
             bias_o=bias_o
         )
         self.mlp = SwiGLU(d_model, expansion)
-        self.norm0 = nn.RMSNorm(d_model, elementwise_affine)
-        self.norm1 = nn.RMSNorm(d_model, elementwise_affine)
+        self.norm0 = nn.RMSNorm(d_model, elementwise_affine=elementwise_affine)
+        self.norm1 = nn.RMSNorm(d_model, elementwise_affine=elementwise_affine)
         # TODO: check that dropout gets reset in eval
         self.drop = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
@@ -172,7 +173,7 @@ class ReasoningModule(nn.Module):
             sdpa_dropout: float,
             bias_qkv: bool,
             bias_o: bool,
-            expansion: int,
+            expansion: float,
             elementwise_affine: bool,
             dropout: float,
             hrm_block_cnt: int,
@@ -207,7 +208,7 @@ class HRM(nn.Module):
             sdpa_dropout: float,
             bias_qkv: bool,
             bias_o: bool,
-            expansion: int,
+            expansion: float,
             elementwise_affine: bool,
             dropout: float,
             H_block_cnt: int,

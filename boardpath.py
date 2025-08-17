@@ -16,7 +16,7 @@ def setup_model_and_device(hrm_params: HRMParameters) -> Tuple[HRM, torch.device
     else:
         device = torch.device("cpu")
 
-    device = torch.device("cpu")
+    # device = torch.device("cpu")
 
     hrm = HRM(
         vocab_cnt=hrm_params.vocab_cnt,
@@ -168,7 +168,7 @@ def get_config_1() -> Tuple[
         sdpa_dropout=0.1,
         bias_qkv=False,
         bias_o=False,
-        expansion=2,
+        expansion=2.0,
         elementwise_affine=True,
         dropout=0.1,
         H_block_cnt=4,
@@ -202,6 +202,64 @@ def get_config_1() -> Tuple[
 
     return boardpath_params, hrm_params, hrm_train_params, train_loader, val_loader
 
+def get_config_1b() -> Tuple[
+        BoardPathParameters,
+        HRMParameters,
+        HRMTrainParameters,
+        DataLoader,
+        DataLoader
+]:
+    boardpath_params = BoardPathParameters(
+        board_size=8,
+        train_count=5000,
+        val_count=500,
+        wall_prob=0.3
+    )
+
+    hrm_params = HRMParameters(
+        seq_len=boardpath_params.board_size * boardpath_params.board_size,
+        vocab_cnt=get_vocab_cnt(),
+        d_model=256,
+        head_cnt=8,
+        sdpa_dropout=0.1,
+        bias_qkv=False,
+        bias_o=False,
+        expansion=2.0,
+        elementwise_affine=True,
+        dropout=0.1,
+        H_block_cnt=4,
+        L_block_cnt=4,
+        H_cycle_cnt=2,
+        L_cycle_cnt=2,
+        infer_segment_cnt=1,
+        head_bias=False
+    )
+
+    hrm_train_params = HRMTrainParameters(
+        train_segment_cnt=2,
+        epoch_cnt=50,
+        weight_decay=0.01, # default: 0.01, try 0.1
+        grad_clip=None, # 1.0
+        batch_size=64,
+        lr=1e-4
+    )
+
+    # TODO: This is not needed for inference
+    train_ds, val_ds = build_datasets(boardpath_params)
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=hrm_train_params.batch_size,
+        shuffle=True
+    )
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=hrm_train_params.batch_size,
+        shuffle=False
+    )
+
+    return boardpath_params, hrm_params, hrm_train_params, train_loader, val_loader
+
+# paper
 def get_config_2() -> Tuple[
         BoardPathParameters,
         HRMParameters,
@@ -224,7 +282,7 @@ def get_config_2() -> Tuple[
         sdpa_dropout=0.1,
         bias_qkv=False,
         bias_o=False,
-        expansion=4,
+        expansion=4.0,
         elementwise_affine=True,
         dropout=0.1,
         H_block_cnt=4,
@@ -277,7 +335,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     set_all_seeds(42)
-    boardpath_params, hrm_params, hrm_train_params, train_loader, val_loader = get_config_1()
+    boardpath_params, hrm_params, hrm_train_params, train_loader, val_loader = get_config_1() # get_config_1b()
 
     if args.mode == 'train':
         run_training(
