@@ -16,7 +16,7 @@ def setup_model_and_device(hrm_params: HRMParameters) -> Tuple[HRM, torch.device
     else:
         device = torch.device("cpu")
 
-    # device = torch.device("cpu")
+    device = torch.device("cpu")
 
     hrm = HRM(
         vocab_cnt=hrm_params.vocab_cnt,
@@ -146,13 +146,41 @@ def run_inference(
 
     print("\nLegend: . = Floor, # = Wall, S = Start, E = End, * = Path")
 
-def get_config_1() -> Tuple[
-        BoardPathParameters,
-        HRMParameters,
-        HRMTrainParameters,
-        DataLoader,
-        DataLoader
-]:
+def get_train_config_1(boardpath_params: BoardPathParameters) -> HRMTrainParameters:
+    return HRMTrainParameters(
+        train_segment_cnt=2,
+        epoch_cnt=10,
+        weight_decay=0.01, # default: 0.01, try 0.1
+        grad_clip=None, # 1.0
+        batch_size=64,
+        lr=3e-4
+    )
+
+def get_train_config_2(boardpath_params: BoardPathParameters) -> HRMTrainParameters:
+    return HRMTrainParameters(
+        train_segment_cnt=2,
+        epoch_cnt=100,
+        weight_decay=1.0, # default: 0.01, try 0.1
+        grad_clip=None, # 1.0
+        batch_size=768,
+        lr=1e-4
+    )
+
+def get_loaders(boardpath_params: BoardPathParameters, batch_size: int) -> Tuple[DataLoader, DataLoader]:
+    train_ds, val_ds = build_datasets(boardpath_params)
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=batch_size,
+        shuffle=True
+    )
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=batch_size,
+        shuffle=False
+    )
+    return train_loader, val_loader
+
+def get_config_1() -> Tuple[BoardPathParameters, HRMParameters]:
     boardpath_params = BoardPathParameters(
         board_size=4,
         train_count=5000,
@@ -178,37 +206,9 @@ def get_config_1() -> Tuple[
         infer_segment_cnt=1,
         head_bias=False
     )
+    return boardpath_params, hrm_params
 
-    hrm_train_params = HRMTrainParameters(
-        train_segment_cnt=2,
-        epoch_cnt=10,
-        weight_decay=0.01, # default: 0.01, try 0.1
-        grad_clip=None, # 1.0
-        batch_size=64,
-        lr=3e-4
-    )
-
-    train_ds, val_ds = build_datasets(boardpath_params)
-    train_loader = DataLoader(
-        train_ds,
-        batch_size=hrm_train_params.batch_size,
-        shuffle=True
-    )
-    val_loader = DataLoader(
-        val_ds,
-        batch_size=hrm_train_params.batch_size,
-        shuffle=False
-    )
-
-    return boardpath_params, hrm_params, hrm_train_params, train_loader, val_loader
-
-def get_config_1b() -> Tuple[
-        BoardPathParameters,
-        HRMParameters,
-        HRMTrainParameters,
-        DataLoader,
-        DataLoader
-]:
+def get_config_1b() -> Tuple[BoardPathParameters, HRMParameters]:
     boardpath_params = BoardPathParameters(
         board_size=8,
         train_count=5000,
@@ -234,39 +234,10 @@ def get_config_1b() -> Tuple[
         infer_segment_cnt=1,
         head_bias=False
     )
-
-    hrm_train_params = HRMTrainParameters(
-        train_segment_cnt=2,
-        epoch_cnt=50,
-        weight_decay=0.01, # default: 0.01, try 0.1
-        grad_clip=None, # 1.0
-        batch_size=64,
-        lr=1e-4
-    )
-
-    # TODO: This is not needed for inference
-    train_ds, val_ds = build_datasets(boardpath_params)
-    train_loader = DataLoader(
-        train_ds,
-        batch_size=hrm_train_params.batch_size,
-        shuffle=True
-    )
-    val_loader = DataLoader(
-        val_ds,
-        batch_size=hrm_train_params.batch_size,
-        shuffle=False
-    )
-
-    return boardpath_params, hrm_params, hrm_train_params, train_loader, val_loader
+    return boardpath_params, hrm_params
 
 # paper
-def get_config_2() -> Tuple[
-        BoardPathParameters,
-        HRMParameters,
-        HRMTrainParameters,
-        DataLoader,
-        DataLoader
-]:
+def get_config_2() -> Tuple[BoardPathParameters, HRMParameters]:
     boardpath_params = BoardPathParameters(
         board_size=4,
         train_count=2000,
@@ -292,29 +263,7 @@ def get_config_2() -> Tuple[
         infer_segment_cnt=1,
         head_bias=False
     )
-
-    hrm_train_params = HRMTrainParameters(
-        train_segment_cnt=2,
-        epoch_cnt=100,
-        weight_decay=1.0, # default: 0.01, try 0.1
-        grad_clip=None, # 1.0
-        batch_size=768,
-        lr=1e-4
-    )
-
-    train_ds, val_ds = build_datasets(boardpath_params)
-    train_loader = DataLoader(
-        train_ds,
-        batch_size=hrm_train_params.batch_size,
-        shuffle=True
-    )
-    val_loader = DataLoader(
-        val_ds,
-        batch_size=hrm_train_params.batch_size,
-        shuffle=False
-    )
-
-    return boardpath_params, hrm_params, hrm_train_params, train_loader, val_loader
+    return boardpath_params, hrm_params
 
 def format_board(board_tensor: torch.Tensor, board_size: int) -> str:
     """Format a flattened board tensor as a visual grid."""
@@ -335,9 +284,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     set_all_seeds(42)
-    boardpath_params, hrm_params, hrm_train_params, train_loader, val_loader = get_config_1() # get_config_1b()
+
+    boardpath_params, hrm_params = get_config_1()
 
     if args.mode == 'train':
+        hrm_train_params = get_train_config_1(boardpath_params)
+        train_loader, val_loader = get_loaders(boardpath_params, hrm_train_params.batch_size)
         run_training(
             boardpath_params,
             hrm_params,
