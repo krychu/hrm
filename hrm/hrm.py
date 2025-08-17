@@ -33,6 +33,9 @@ class HRMParameters:
 
     # hrm
     infer_segment_cnt: int # Number of forward passes per batch at inference (think time)
+    # Rather only RoPE or absolute positioning be used
+    use_rope: bool # Use RoPE (rotary positioning encoding)
+    use_abs_pos: bool # Use absolute position encoding
 
     # head
     head_bias: bool
@@ -46,19 +49,26 @@ class HRMTrainParameters:
     batch_size: int
     lr: float
 
-# TODO: parametrize, tok: bool, pos: bool
 class InputEmbedding(nn.Module):
-    def __init__(self, vocab_cnt: int, seq_len: int, embedding_dim: int):
+    def __init__(
+            self,
+            vocab_cnt: int,
+            seq_len: int,
+            embedding_dim: int,
+            use_abs_pos: bool
+    ):
         super().__init__()
+        self.use_abs_pos = use_abs_pos
         self.tok = nn.Embedding(vocab_cnt, embedding_dim)
-        self.pos = nn.Embedding(seq_len, embedding_dim)
+        if use_abs_pos:
+            self.pos = nn.Embedding(seq_len, embedding_dim)
+            self.register_buffer("pos_idx", torch.arange(seq_len, dtype=torch.long), persistent=False)
         self.scale = math.sqrt(embedding_dim)
 
         # optional
         nn.init.normal_(self.tok.weight, mean=0.0, std=1.0/math.sqrt(embedding_dim))
-        nn.init.normal_(self.pos.weight, mean=0.0, std=1.0/math.sqrt(embedding_dim))
-
-        self.register_buffer("pos_idx", torch.arange(seq_len, dtype=torch.long), persistent=False)
+        if use_abs_pos:
+            nn.init.normal_(self.pos.weight, mean=0.0, std=1.0/math.sqrt(embedding_dim))
 
     def forward(self, x_bs: torch.Tensor) -> torch.Tensor:
         """
@@ -69,11 +79,75 @@ class InputEmbedding(nn.Module):
         D = embedding_dim
         """
         x_bsd_tok = self.tok(x_bs) # [B, S, D]
-        x_sd_pos = self.pos(self.pos_idx) # [S, D]
-        x_1sd_pos = x_sd_pos.unsqueeze(0) # [1, S, D]
+        if self.use_abs_pos:
+            x_sd_pos = self.pos(self.pos_idx) # [S, D]
+            x_1sd_pos = x_sd_pos.unsqueeze(0) # [1, S, D]
+            x_bsd_tok = x_bsd_tok + x_1sd_pos
         # TODO: no additional scaling by 1/sqrt(2)?
-        y_bsd = self.scale * (x_bsd_tok + x_1sd_pos)
+        y_bsd = self.scale * x_bsd_tok
         return y_bsd
+
+# For RoPE pairs we use concatenated layout, instead of interleaved. For
+# (a,b,c,d) the pairs are (a,c) and (b,d).
+def rotate_half(x: torch.Tensor) -> torch.Tensor:
+    # x: [..., Dh], Dh must be even
+    Dh = x.shape[-1]
+    x1 = x[..., :Dh // 2]
+    x2 = x[..., Dh // 2:]
+    return torch.cat((-x2, x1), dim=-1)
+
+@torch.no_grad()
+def apply_rope(q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor):
+    """
+    q,k: [B, H, S, Dh]
+    cos,sin: [S, Dh]  (broadcasted to [B,H,S,Dh])
+    Returns roped (q, k) with original dtypes preserved.
+    """
+    q_dtype, k_dtype = q.dtype, k.dtype
+    q = q.to(cos.dtype)
+    k = k.to(cos.dtype)
+
+    # Broadcast cos/sin over batch and heads
+    cos_ = cos.unsqueeze(0).unsqueeze(0)  # [1,1,S,Dh]
+    sin_ = sin.unsqueeze(0).unsqueeze(0)  # [1,1,S,Dh]
+
+    q = (q * cos_) + (rotate_half(q) * sin_)
+    k = (k * cos_) + (rotate_half(k) * sin_)
+    return q.to(q_dtype), k.to(k_dtype)
+
+class RotaryEmbedding(torch.nn.Module):
+    """
+    Precomputes cos/sin tables for RoPE.
+    - head_dim: per-head dimension (Dh), must be even
+    - max_position_embeddings: maximum S you will use
+    - base (theta): standard 10000.0
+    Buffers move with the module device/dtype via .to / .cuda().
+    """
+    def __init__(self, head_dim: int, max_position_embeddings: int, base: float = 10000.0):
+        super().__init__()
+        assert head_dim % 2 == 0, "RoPE head_dim must be even"
+        self.head_dim = head_dim
+        self.max_pos = max_position_embeddings
+
+        # inv_freq: [Dh/2]
+        inv_freq = 1.0 / (base ** (torch.arange(0, head_dim, 2, dtype=torch.float32) / head_dim))
+        # positions: [S]
+        t = torch.arange(self.max_pos, dtype=torch.float32)
+        freqs = torch.outer(t, inv_freq)  # [S, Dh/2]
+        emb = torch.cat((freqs, freqs), dim=-1)  # [S, Dh]
+
+        self.register_buffer("cos_cached", emb.cos(), persistent=False)
+        self.register_buffer("sin_cached", emb.sin(), persistent=False)
+
+    def forward(self, seq_len: int | None = None):
+        """
+        Returns cos,sin of shape [S, Dh] for given S (defaults to max_pos).
+        """
+        if seq_len is None:
+            seq_len = self.max_pos
+        if seq_len > self.max_pos:
+            raise ValueError(f"Requested RoPE seq_len {seq_len} > max {self.max_pos}")
+        return self.cos_cached[:seq_len], self.sin_cached[:seq_len]
 
 class SDPAttention(nn.Module):
     def __init__(
@@ -93,12 +167,13 @@ class SDPAttention(nn.Module):
         self.w_qkv = nn.Linear(d_model, 3 * d_model, bias=bias_qkv)
         self.w_o = nn.Linear(d_model, d_model, bias=bias_o)
 
-    def forward(self, x_bsd: torch.Tensor) -> torch.Tensor:
+    def forward(self, x_bsd: torch.Tensor, cos_sin: Tuple[torch.Tensor, torch.Tensor] | None = None) -> torch.Tensor:
         B, S, D = x_bsd.shape
 
         qkv_bs3d = self.w_qkv(x_bsd)
         q_bsd, k_bsd, v_bsd = qkv_bs3d.chunk(3, dim=-1)
 
+        # [B,S,D] -> [B,H,S,Dh]
         def split_heads(t_bsd: torch.Tensor) -> torch.Tensor:
             t_bshd = t_bsd.view(B, S, self.head_cnt, self.head_dim)
             t_bhsd = t_bshd.transpose(1, 2) # .continuous()?
@@ -108,13 +183,18 @@ class SDPAttention(nn.Module):
         k_bhsd = split_heads(k_bsd)
         v_bhsd = split_heads(v_bsd)
 
+        # RoPE
+        if cos_sin is not None:
+            cos, sin = cos_sin
+            q_bhsd, k_bhsd = apply_rope(q_bhsd, k_bhsd, cos, sin)
+
         x_bhsd = F.scaled_dot_product_attention(
             q_bhsd, k_bhsd, v_bhsd,
             dropout_p=(self.sdpa_dropout if self.training else 0.0)
-        )
+        ) # [B,H,S,Dh]
 
         x_bshd = x_bhsd.transpose(1, 2).contiguous()
-        x_bsd = x_bshd.view(B, S, D)
+        x_bsd = x_bshd.view(B, S, D) # [B,S,D]
 
         x_bsd = self.w_o(x_bsd)
         return x_bsd
@@ -124,7 +204,7 @@ class SwiGLU(nn.Module):
         super().__init__()
         # ref snaps to multiples of 256; we simplify
         inner = int(expansion * d_model * 2 / 3)
-        self.w0 = nn.Linear(d_model, 2 * inner, bias=False) # TODO: check
+        self.w0 = nn.Linear(d_model, 2 * inner, bias=False) # TODO: check paper for False bias
         self.w1 = nn.Linear(inner, d_model, bias=False) # TODO: check
 
     def forward(self, x: torch.Tensor):
@@ -155,12 +235,11 @@ class HRMBlock(nn.Module):
         self.mlp = SwiGLU(d_model, expansion)
         self.norm0 = nn.RMSNorm(d_model, elementwise_affine=elementwise_affine)
         self.norm1 = nn.RMSNorm(d_model, elementwise_affine=elementwise_affine)
-        # TODO: check that dropout gets reset in eval
         self.drop = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
-    def forward(self, x_bsd: torch.Tensor):
+    def forward(self, x_bsd: torch.Tensor, cos_sin: Tuple[torch.Tensor, torch.Tensor]):
         # Attention sublayer
-        x_bsd = self.norm0( (x_bsd + self.drop(self.attn(x_bsd))) )
+        x_bsd = self.norm0( (x_bsd + self.drop(self.attn(x_bsd, cos_sin=cos_sin))) )
         # MLP sublayer
         x_bsd = self.norm1( (x_bsd + self.drop(self.mlp(x_bsd))) )
         return x_bsd
@@ -192,10 +271,15 @@ class ReasoningModule(nn.Module):
             ) for _ in range(hrm_block_cnt)
         ])
 
-    def forward(self, x_bsd: torch.Tensor, x_bsd_injection: torch.Tensor) -> torch.Tensor:
+    def forward(
+            self,
+            x_bsd: torch.Tensor,
+            x_bsd_injection: torch.Tensor,
+            cos_sin: Tuple[torch.Tensor, torch.Tensor]
+    ) -> torch.Tensor:
         x_bsd = x_bsd + x_bsd_injection
         for hrm_block in self.hrm_blocks:
-            x_bsd = hrm_block(x_bsd)
+            x_bsd = hrm_block(x_bsd, cos_sin=cos_sin)
         return x_bsd
 
 class HRM(nn.Module):
@@ -216,18 +300,27 @@ class HRM(nn.Module):
             H_cycle_cnt: int,
             L_cycle_cnt: int,
             infer_segment_cnt: int,
+            use_rope: bool,
+            use_abs_pos: bool,
             head_bias: bool
     ):
         super().__init__()
         self.seq_len = seq_len
-        # self.d_model = d_model
         self.H_cycle_cnt = H_cycle_cnt
         self.L_cycle_cnt = L_cycle_cnt
         self.embed = InputEmbedding(
             vocab_cnt=vocab_cnt,
             seq_len=seq_len,
-            embedding_dim=d_model
+            embedding_dim=d_model,
+            use_abs_pos=use_abs_pos
         )
+        self.rotary = None
+        if use_rope:
+            self.rotary = RotaryEmbedding(
+                head_dim=d_model // head_cnt,
+                max_position_embeddings=seq_len,
+                base=10000.0
+            )
         self.H = ReasoningModule(
             d_model=d_model,
             head_cnt=head_cnt,
@@ -295,18 +388,56 @@ class HRM(nn.Module):
         zH_bsd, zL_bsd = zs_bsd
         x_bsd = self.embed(x_bs)
 
+        # Get RoPE tables once per call (buffers already on correct device)
+        cos_sin = None
+        if self.rotary is not None:
+            cos_sin = self.rotary(self.seq_len)  # (cos, sin) each [S, Dh]
+
         with torch.no_grad():
             for idx in range(self.H_cycle_cnt * self.L_cycle_cnt - 1):
-                zL_bsd = self.L(zL_bsd, zH_bsd + x_bsd)
+                zL_bsd = self.L(zL_bsd, zH_bsd + x_bsd, cos_sin=cos_sin)
 
                 if (idx+1) % self.L_cycle_cnt == 0:
-                    zH_bsd = self.H(zH_bsd, zL_bsd)
+                    zH_bsd = self.H(zH_bsd, zL_bsd, cos_sin=cos_sin)
 
-        zL_bsd = self.L(zL_bsd, zH_bsd + x_bsd)
-        zH_bsd = self.H(zH_bsd, zL_bsd)
+        zL_bsd = self.L(zL_bsd, zH_bsd + x_bsd, cos_sin=cos_sin)
+        zH_bsd = self.H(zH_bsd, zL_bsd, cos_sin=cos_sin)
 
         y_logits_bsc = self.head(zH_bsd)
         return (zH_bsd, zL_bsd), y_logits_bsc
+
+def setup_model_and_device(hrm_params: HRMParameters) -> Tuple[HRM, torch.device]:
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
+
+    # device = torch.device("cpu")
+
+    hrm = HRM(
+        vocab_cnt=hrm_params.vocab_cnt,
+        seq_len=hrm_params.seq_len,
+        d_model=hrm_params.d_model,
+        head_cnt=hrm_params.head_cnt,
+        sdpa_dropout=hrm_params.sdpa_dropout,
+        bias_qkv=hrm_params.bias_qkv,
+        bias_o=hrm_params.bias_o,
+        expansion=hrm_params.expansion,
+        elementwise_affine=hrm_params.elementwise_affine,
+        dropout=hrm_params.dropout,
+        H_block_cnt=hrm_params.H_block_cnt,
+        L_block_cnt=hrm_params.L_block_cnt,
+        H_cycle_cnt=hrm_params.H_cycle_cnt,
+        L_cycle_cnt=hrm_params.L_cycle_cnt,
+        infer_segment_cnt=hrm_params.infer_segment_cnt,
+        use_rope=hrm_params.use_rope,
+        use_abs_pos=hrm_params.use_abs_pos,
+        head_bias=hrm_params.head_bias
+    ).to(device)
+
+    return hrm, device
 
 def train_one_epoch(
         hrm: HRM,
@@ -433,6 +564,8 @@ def hrm_summary(hrm_params: HRMParameters, hrm_train_params: HRMTrainParameters,
     print(f"{'H_cycle_cnt':<20} {hrm_params.H_cycle_cnt:>10}")
     print(f"{'L_cycle_cnt':<20} {hrm_params.L_cycle_cnt:>10}")
     print(f"{'infer_segment_cnt':<20} {hrm_params.infer_segment_cnt:>10}")
+    print(f"{'use_rope':<20} {hrm_params.use_rope:>10}")
+    print(f"{'use_abs_pos':<20} {hrm_params.use_abs_pos:>10}")
     print(f"{'head_bias':<20} {hrm_params.head_bias:>10}")
 
     print("\nHRM Training Parameters:")

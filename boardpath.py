@@ -8,37 +8,6 @@ from torch.utils.data import DataLoader
 from hrm.hrm import *
 from datasets.build_boardpath_dataset import *
 
-def setup_model_and_device(hrm_params: HRMParameters) -> Tuple[HRM, torch.device]:
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-    elif torch.backends.mps.is_available():
-        device = torch.device("mps")
-    else:
-        device = torch.device("cpu")
-
-    device = torch.device("cpu")
-
-    hrm = HRM(
-        vocab_cnt=hrm_params.vocab_cnt,
-        seq_len=hrm_params.seq_len,
-        d_model=hrm_params.d_model,
-        head_cnt=hrm_params.head_cnt,
-        sdpa_dropout=hrm_params.sdpa_dropout,
-        bias_qkv=hrm_params.bias_qkv,
-        bias_o=hrm_params.bias_o,
-        expansion=hrm_params.expansion,
-        elementwise_affine=hrm_params.elementwise_affine,
-        dropout=hrm_params.dropout,
-        H_block_cnt=hrm_params.H_block_cnt,
-        L_block_cnt=hrm_params.L_block_cnt,
-        H_cycle_cnt=hrm_params.H_cycle_cnt,
-        L_cycle_cnt=hrm_params.L_cycle_cnt,
-        infer_segment_cnt=hrm_params.infer_segment_cnt,
-        head_bias=hrm_params.head_bias
-    ).to(device)
-
-    return hrm, device
-
 def run_training(
         boardpath_params: BoardPathParameters,
         hrm_params: HRMParameters,
@@ -146,26 +115,6 @@ def run_inference(
 
     print("\nLegend: . = Floor, # = Wall, S = Start, E = End, * = Path")
 
-def get_train_config_1(boardpath_params: BoardPathParameters) -> HRMTrainParameters:
-    return HRMTrainParameters(
-        train_segment_cnt=2,
-        epoch_cnt=10,
-        weight_decay=0.01, # default: 0.01, try 0.1
-        grad_clip=None, # 1.0
-        batch_size=64,
-        lr=3e-4
-    )
-
-def get_train_config_2(boardpath_params: BoardPathParameters) -> HRMTrainParameters:
-    return HRMTrainParameters(
-        train_segment_cnt=2,
-        epoch_cnt=100,
-        weight_decay=1.0, # default: 0.01, try 0.1
-        grad_clip=None, # 1.0
-        batch_size=768,
-        lr=1e-4
-    )
-
 def get_loaders(boardpath_params: BoardPathParameters, batch_size: int) -> Tuple[DataLoader, DataLoader]:
     train_ds, val_ds = build_datasets(boardpath_params)
     train_loader = DataLoader(
@@ -179,6 +128,26 @@ def get_loaders(boardpath_params: BoardPathParameters, batch_size: int) -> Tuple
         shuffle=False
     )
     return train_loader, val_loader
+
+def get_train_config_1(boardpath_params: BoardPathParameters) -> HRMTrainParameters:
+    return HRMTrainParameters(
+        train_segment_cnt=2,
+        epoch_cnt=50,
+        weight_decay=0.01, # default: 0.01, try 0.1
+        grad_clip=None, # 1.0
+        batch_size=64,
+        lr=1e-4
+    )
+
+def get_train_config_2(boardpath_params: BoardPathParameters) -> HRMTrainParameters:
+    return HRMTrainParameters(
+        train_segment_cnt=2,
+        epoch_cnt=100,
+        weight_decay=1.0, # default: 0.01, try 0.1
+        grad_clip=None, # 1.0
+        batch_size=768,
+        lr=1e-4
+    )
 
 def get_config_1() -> Tuple[BoardPathParameters, HRMParameters]:
     boardpath_params = BoardPathParameters(
@@ -204,6 +173,8 @@ def get_config_1() -> Tuple[BoardPathParameters, HRMParameters]:
         H_cycle_cnt=2,
         L_cycle_cnt=2,
         infer_segment_cnt=1,
+        use_rope=True,
+        use_abs_pos=False,
         head_bias=False
     )
     return boardpath_params, hrm_params
@@ -232,6 +203,8 @@ def get_config_1b() -> Tuple[BoardPathParameters, HRMParameters]:
         H_cycle_cnt=2,
         L_cycle_cnt=2,
         infer_segment_cnt=1,
+        use_rope=False,
+        use_abs_pos=True,
         head_bias=False
     )
     return boardpath_params, hrm_params
@@ -261,6 +234,8 @@ def get_config_2() -> Tuple[BoardPathParameters, HRMParameters]:
         H_cycle_cnt=2,
         L_cycle_cnt=2,
         infer_segment_cnt=1,
+        use_rope=False,
+        use_abs_pos=True,
         head_bias=False
     )
     return boardpath_params, hrm_params
