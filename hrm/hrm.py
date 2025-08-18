@@ -389,8 +389,9 @@ class HRM(nn.Module):
     def forward(
             self,
             zs_bsd: Tuple[torch.Tensor, torch.Tensor],
-            x_bs: torch.Tensor
-    ) -> Tuple[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
+            x_bs: torch.Tensor,
+            capture_frames = False
+    ) -> Tuple[Tuple[torch.Tensor, torch.Tensor], torch.Tensor, List[torch.Tensor]]:
         """
         zs_bsd: (zH, zL) each [B,S,D]
                 Hidden state from previous segment (detached before passing in)
@@ -408,6 +409,13 @@ class HRM(nn.Module):
         S = x_bs.size(1) # seq len
         cos_sin = self.rotary(S) if self.rotary is not None else None # (cos, sin) each [S, Dh]
 
+        frames: List[torch.Tensor] = []
+        def take_frame():
+            y_logits_bsc = self.head(zH_bsd.detach()) # [B,S,C]
+            frames.append(y_logits_bsc.argmax(dim=-1)) # [B,S]
+
+        capture_frames and take_frame()
+
         with torch.no_grad():
             for idx in range(self.H_cycle_cnt * self.L_cycle_cnt - 1):
                 zL_bsd = self.L(zL_bsd, zH_bsd + x_bsd, cos_sin=cos_sin)
@@ -415,11 +423,15 @@ class HRM(nn.Module):
                 if (idx+1) % self.L_cycle_cnt == 0:
                     zH_bsd = self.H(zH_bsd, zL_bsd, cos_sin=cos_sin)
 
+                capture_frames and take_frame()
+
         zL_bsd = self.L(zL_bsd, zH_bsd + x_bsd, cos_sin=cos_sin)
         zH_bsd = self.H(zH_bsd, zL_bsd, cos_sin=cos_sin)
 
+        capture_frames and take_frame()
+
         y_logits_bsc = self.head(zH_bsd)
-        return (zH_bsd, zL_bsd), y_logits_bsc
+        return (zH_bsd, zL_bsd), y_logits_bsc, frames
 
 def train_one_epoch(
         hrm: HRM,
@@ -449,7 +461,7 @@ def train_one_epoch(
         for seg_idx in range(segment_cnt):
             optimizer.zero_grad(set_to_none=True)
 
-            z_bsd, logits_bsc = hrm(z_bsd, x_bs)
+            z_bsd, logits_bsc, _ = hrm(z_bsd, x_bs, False)
             # CrossEntropyLoss expects [B,C,S]
             logits_bcs = logits_bsc.transpose(1, 2)
             loss = ce_loss(logits_bcs, y_bs)
@@ -514,7 +526,7 @@ def evaluate(
 
         # Run a fixed number of segments (think time)
         for _ in range(segment_cnt):
-            z, logits_bsv = hrm(z, x_bs)
+            z, logits_bsv, _ = hrm(z, x_bs, False)
             z = (z[0].detach(), z[1].detach())
 
             loss = ce_loss(logits_bsv.transpose(1, 2), y_bs)
@@ -540,8 +552,6 @@ def setup_model_and_device(hrm_params: HRMParameters) -> Tuple[HRM, torch.device
         device = torch.device("mps")
     else:
         device = torch.device("cpu")
-
-    device = torch.device("cpu")
 
     hrm = HRM(
         vocab_cnt=hrm_params.vocab_cnt,

@@ -7,6 +7,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from hrm.hrm import *
 from datasets.build_boardpath_dataset import *
+from PIL import Image, ImageDraw, ImageFont
 
 def run_training(
         boardpath_params: BoardPathParameters,
@@ -98,18 +99,26 @@ def run_inference(
     with torch.no_grad():
         z = hrm.init_z(input_flat)
 
+        all_frames = []
         # Run a fixed number of segments (think time)
-        for _ in range(hrm_params.infer_segment_cnt):
-            z, logits_bsv = hrm(z, input_flat)
+        for seg_idx in range(hrm_params.infer_segment_cnt):
+            z, logits_bsv, frames = hrm(z, input_flat, True)
+            all_frames += frames
             # z = (z[0].detach(), z[1].detach())
 
         predicted = logits_bsv.argmax(dim=-1) # [B,S]
         # predicted = torch.argmax(output_logits, dim=-1)  # [1, seq_len]
 
+    create_animated_gif(
+        all_frames,
+        filename="boardpath.gif",
+        board_size=boardpath_params.board_size
+    )
+
     print("\nINPUT BOARD:")
     print(format_board(input_board.flatten(), boardpath_params.board_size))
 
-    print("\nTARGET BOARD (ground truth):")
+    print("\nTARGET BOARD:")
     print(format_board(target_board.flatten(), boardpath_params.board_size))
 
     print("\nPREDICTED BOARD:")
@@ -134,7 +143,7 @@ def get_loaders(boardpath_params: BoardPathParameters, batch_size: int) -> Tuple
 def get_train_config(boardpath_params: BoardPathParameters) -> HRMTrainParameters:
     return HRMTrainParameters(
         train_segment_cnt=2,
-        epoch_cnt=1,
+        epoch_cnt=30,
         weight_decay=0.01, # default: 0.01, try 0.1
         grad_clip=None, # 1.0
         batch_size=64,
@@ -143,21 +152,21 @@ def get_train_config(boardpath_params: BoardPathParameters) -> HRMTrainParameter
 
 def get_config() -> Tuple[BoardPathParameters, HRMParameters]:
     boardpath_params = BoardPathParameters(
-        board_size=4,
-        train_count=5000,
+        board_size=10,
+        train_count=4000,
         val_count=500,
-        wall_prob=0.3
+        wall_prob=0.4
     )
 
     hrm_params = HRMParameters(
         seq_len=boardpath_params.board_size * boardpath_params.board_size,
         vocab_cnt=get_vocab_cnt(),
-        d_model=128,
+        d_model=256,
         head_cnt=4,
         sdpa_dropout=0.1,
         bias_qkv=False,
         bias_o=False,
-        expansion=2.0,
+        expansion=4.0,
         elementwise_affine=True,
         dropout=0.1,
         H_block_cnt=4,
@@ -165,12 +174,91 @@ def get_config() -> Tuple[BoardPathParameters, HRMParameters]:
         H_cycle_cnt=2,
         L_cycle_cnt=2,
         learnable_z_init=True,
-        infer_segment_cnt=1,
+        infer_segment_cnt=2,
         use_rope=True,
         use_abs_pos=False,
         head_bias=False
     )
     return boardpath_params, hrm_params
+
+def create_animated_gif(
+        frames: List[torch.Tensor],
+        filename: str,
+        board_size: int,
+        duration: int = 1000,
+        color_path: bool = True
+):
+    symbols = {FLOOR: '.', WALL: '#', START: 'S', END: 'E', PATH: '*'}
+
+    font_size = 24
+    char_width = font_size * 0.6  # Courier is roughly 0.6 aspect ratio
+    char_height = font_size
+    header_height = int(char_height * 1.2)
+    empty_line_height = int(char_height * 0.8)
+    padding = 20
+
+    # Calculate image dimensions (with header space, empty line, and padding)
+    img_width = int(board_size * char_width * 2) + 2 * padding  # *2 for spacing between chars
+    img_height = int(board_size * char_height + header_height + empty_line_height) + 2 * padding
+
+    images = []
+
+    try:
+        # Try to load Courier font
+        font = ImageFont.truetype("Courier New", font_size)
+    except:
+        try:
+            font = ImageFont.truetype("courier", font_size)
+        except:
+            font = ImageFont.load_default()
+            print("Warning: Could not load Courier font, using default")
+
+    for frame_idx, frame in enumerate(frames):
+        # Take first batch item if batched
+        if len(frame.shape) == 2:
+            board_flat = frame[0].cpu()  # Take first item in batch
+        else:
+            board_flat = frame.cpu()
+
+        board = board_flat.view(board_size, board_size)
+
+        img = Image.new('RGB', (img_width, img_height), color='black')
+        draw = ImageDraw.Draw(img)
+
+        # Draw header (with padding)
+        header_text = f"step: {frame_idx:2d}"
+        draw.text((padding, padding), header_text, fill='white', font=font)
+
+        # Draw board characters (offset by header height, empty line, and padding)
+        board_start_y = padding + header_height + empty_line_height
+        for row in range(board_size):
+            for col in range(board_size):
+                cell_value = int(board[row, col].item())
+                char = symbols.get(cell_value, str(cell_value))
+
+                # Calculate position (centered in cell, with padding)
+                x = padding + col * char_width * 2 + char_width * 0.3
+                y = board_start_y + row * char_height
+
+                # Choose color: green for path (*) if enabled, white for everything else
+                if color_path and cell_value == PATH:
+                    color = 'lime'
+                else:
+                    color = 'white'
+
+                draw.text((x, y), char, fill=color, font=font)
+
+        images.append(img)
+
+    if images:
+        images[0].save(
+            filename,
+            save_all=True,
+            append_images=images[1:],
+            duration=duration,
+            loop=0  # Infinite loop
+        )
+        print(f"Animation saved to: {filename} ({len(images)} frames)")
 
 def format_board(board_tensor: torch.Tensor, board_size: int) -> str:
     """Format a flattened board tensor as a visual grid."""
@@ -186,8 +274,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='HRM Boardpath Training and Inference')
     parser.add_argument('--mode', choices=['train', 'inference'], required=True,
                         help='Mode to run: train (trains and saves model) or inference (loads model and runs on random sample)')
-    parser.add_argument('--model', default='hrm_boardpath.pt',
-                        help='Model file path (default: hrm_boardpath.pt)')
+    parser.add_argument('--model', default='boardpath.pt',
+                        help='Model file path (default: boardpath.pt)')
     args = parser.parse_args()
 
     # set_all_seeds(42)
