@@ -1,10 +1,12 @@
-Implementation of Hierachical Reasoning Model (HRM) proposed by Guan Wang et. al in https://arxiv.org/abs/2506.21734.
+Implementation of <a href="https://arxiv.org/abs/2506.21734">Hierachical Reasoning Model</a> (HRM) proposed by Guan Wang et. al.
 
 In a nutshell: the architecture is inspired by the hierarchical and multi-timescale processing in the human brain. In terms of the implementation, there are two connected recurrent modules iterating at different frequencies. The H module iterates slower and represents abstract planning, while L module iterates faster and represents low-level computations. H and L are based on self-attention. The architecture is an approach for carrying reasoning in latent space.
 
-I've done the implementation for educational purposes. I make a few simplifications and extensions to the original work (outlined below). I'd classify all these as minor.
+I've done the implementation for educational purposes. I make a few simplifications and extensions to the original work (outlined below). I'd classify these as minor.
 
 I apply the model to a problem of path finding on a board with obstacles: given an NxN board with obstacles, find the shortest path connecting START with END. Example:
+
+<img width="300" src="https://github.com/user-attachments/assets/5bea57e8-5bec-4843-a945-25c49c0c4f1c" />
 
 ```
 Legend:
