@@ -21,7 +21,7 @@ class HRMParameters:
     bias_o: bool
 
     # hrm block
-    expansion: float # swiglu hidden size multiplier (after attn)
+    expansion: float # SwiGLU hidden size multiplier (after attn)
     elementwise_affine: bool # rms norm learnable scale
     dropout: float # after attention and mlp
 
@@ -32,6 +32,7 @@ class HRMParameters:
     L_cycle_cnt: int # Number of L module iterations per one H iteration
 
     # hrm
+    learnable_z_init: bool # Fixed vs learnable zH_init and zL_init
     infer_segment_cnt: int # Number of forward passes per batch at inference (think time)
     use_rope: bool # Use RoPE (rotary positioning encoding)
     use_abs_pos: bool # Use absolute position encoding
@@ -81,8 +82,8 @@ class InputEmbedding(nn.Module):
         if self.use_abs_pos:
             x_sd_pos = self.pos(self.pos_idx) # [S, D]
             x_1sd_pos = x_sd_pos.unsqueeze(0) # [1, S, D]
-            x_bsd_tok = x_bsd_tok + x_1sd_pos
-        # TODO: no additional scaling by 1/sqrt(2)?
+            # TODO: no additional scaling by 1/sqrt(2)?
+            x_bsd_tok = x_bsd_tok + x_1sd_pos # * (1 / math.sqrt(2))
         y_bsd = self.scale * x_bsd_tok
         return y_bsd
 
@@ -307,6 +308,7 @@ class HRM(nn.Module):
             L_block_cnt: int,
             H_cycle_cnt: int,
             L_cycle_cnt: int,
+            learnable_z_init: bool,
             infer_segment_cnt: int,
             use_rope: bool,
             use_abs_pos: bool,
@@ -359,10 +361,15 @@ class HRM(nn.Module):
         )
 
         # Learnable initial templates (broadcast to [B, S, D] on demand)
-        self.zH_init = nn.Parameter(torch.zeros(1, 1, d_model))
-        self.zL_init = nn.Parameter(torch.zeros(1, 1, d_model))
-        nn.init.normal_(self.zH_init, mean=0.0, std=1.0/math.sqrt(d_model))
-        nn.init.normal_(self.zL_init, mean=0.0, std=1.0/math.sqrt(d_model))
+        if learnable_z_init:
+            self.zH_init = nn.Parameter(torch.zeros(1, 1, d_model))
+            self.zL_init = nn.Parameter(torch.zeros(1, 1, d_model))
+            nn.init.normal_(self.zH_init, mean=0.0, std=1.0/math.sqrt(d_model))
+            nn.init.normal_(self.zL_init, mean=0.0, std=1.0/math.sqrt(d_model))
+        else:
+            self.register_buffer("zH_init", torch.empty(1,1,d_model).normal_(0, 1/math.sqrt(d_model)))
+            self.register_buffer("zL_init", torch.empty(1,1,d_model).normal_(0, 1/math.sqrt(d_model)))
+
 
     @torch.no_grad() # Not strictly needed here
     def init_z(
@@ -413,39 +420,6 @@ class HRM(nn.Module):
 
         y_logits_bsc = self.head(zH_bsd)
         return (zH_bsd, zL_bsd), y_logits_bsc
-
-def setup_model_and_device(hrm_params: HRMParameters) -> Tuple[HRM, torch.device]:
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-    elif torch.backends.mps.is_available():
-        device = torch.device("mps")
-    else:
-        device = torch.device("cpu")
-
-    device = torch.device("cpu")
-
-    hrm = HRM(
-        vocab_cnt=hrm_params.vocab_cnt,
-        seq_len=hrm_params.seq_len,
-        d_model=hrm_params.d_model,
-        head_cnt=hrm_params.head_cnt,
-        sdpa_dropout=hrm_params.sdpa_dropout,
-        bias_qkv=hrm_params.bias_qkv,
-        bias_o=hrm_params.bias_o,
-        expansion=hrm_params.expansion,
-        elementwise_affine=hrm_params.elementwise_affine,
-        dropout=hrm_params.dropout,
-        H_block_cnt=hrm_params.H_block_cnt,
-        L_block_cnt=hrm_params.L_block_cnt,
-        H_cycle_cnt=hrm_params.H_cycle_cnt,
-        L_cycle_cnt=hrm_params.L_cycle_cnt,
-        infer_segment_cnt=hrm_params.infer_segment_cnt,
-        use_rope=hrm_params.use_rope,
-        use_abs_pos=hrm_params.use_abs_pos,
-        head_bias=hrm_params.head_bias
-    ).to(device)
-
-    return hrm, device
 
 def train_one_epoch(
         hrm: HRM,
@@ -559,6 +533,40 @@ def evaluate(
     acc_samples = total_correct_samples / total_samples
     return avg_loss, acc_cells, acc_samples
 
+def setup_model_and_device(hrm_params: HRMParameters) -> Tuple[HRM, torch.device]:
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
+
+    device = torch.device("cpu")
+
+    hrm = HRM(
+        vocab_cnt=hrm_params.vocab_cnt,
+        seq_len=hrm_params.seq_len,
+        d_model=hrm_params.d_model,
+        head_cnt=hrm_params.head_cnt,
+        sdpa_dropout=hrm_params.sdpa_dropout,
+        bias_qkv=hrm_params.bias_qkv,
+        bias_o=hrm_params.bias_o,
+        expansion=hrm_params.expansion,
+        elementwise_affine=hrm_params.elementwise_affine,
+        dropout=hrm_params.dropout,
+        H_block_cnt=hrm_params.H_block_cnt,
+        L_block_cnt=hrm_params.L_block_cnt,
+        H_cycle_cnt=hrm_params.H_cycle_cnt,
+        L_cycle_cnt=hrm_params.L_cycle_cnt,
+        learnable_z_init=hrm_params.learnable_z_init,
+        infer_segment_cnt=hrm_params.infer_segment_cnt,
+        use_rope=hrm_params.use_rope,
+        use_abs_pos=hrm_params.use_abs_pos,
+        head_bias=hrm_params.head_bias
+    ).to(device)
+
+    return hrm, device
+
 def hrm_summary(hrm_params: HRMParameters, hrm_train_params: HRMTrainParameters, hrm: HRM, device: torch.device) -> None:
     trainable_params = sum(p.numel() for p in hrm.parameters() if p.requires_grad)
 
@@ -578,6 +586,7 @@ def hrm_summary(hrm_params: HRMParameters, hrm_train_params: HRMTrainParameters,
     print(f"{'L_block_cnt':<20} {hrm_params.L_block_cnt:>10}")
     print(f"{'H_cycle_cnt':<20} {hrm_params.H_cycle_cnt:>10}")
     print(f"{'L_cycle_cnt':<20} {hrm_params.L_cycle_cnt:>10}")
+    print(f"{'learnable_z_init':<20} {hrm_params.learnable_z_init:>10}")
     print(f"{'infer_segment_cnt':<20} {hrm_params.infer_segment_cnt:>10}")
     print(f"{'use_rope':<20} {hrm_params.use_rope:>10}")
     print(f"{'use_abs_pos':<20} {hrm_params.use_abs_pos:>10}")

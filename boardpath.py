@@ -131,29 +131,19 @@ def get_loaders(boardpath_params: BoardPathParameters, batch_size: int) -> Tuple
     )
     return train_loader, val_loader
 
-def get_train_config_1(boardpath_params: BoardPathParameters) -> HRMTrainParameters:
+def get_train_config(boardpath_params: BoardPathParameters) -> HRMTrainParameters:
     return HRMTrainParameters(
         train_segment_cnt=2,
-        epoch_cnt=10,
+        epoch_cnt=1,
         weight_decay=0.01, # default: 0.01, try 0.1
         grad_clip=None, # 1.0
         batch_size=64,
         lr=3e-4
     )
 
-def get_train_config_2(boardpath_params: BoardPathParameters) -> HRMTrainParameters:
-    return HRMTrainParameters(
-        train_segment_cnt=2,
-        epoch_cnt=100,
-        weight_decay=1.0, # default: 0.01, try 0.1
-        grad_clip=None, # 1.0
-        batch_size=768,
-        lr=1e-4
-    )
-
-def get_config_1() -> Tuple[BoardPathParameters, HRMParameters]:
+def get_config() -> Tuple[BoardPathParameters, HRMParameters]:
     boardpath_params = BoardPathParameters(
-        board_size=5,
+        board_size=4,
         train_count=5000,
         val_count=500,
         wall_prob=0.3
@@ -174,70 +164,10 @@ def get_config_1() -> Tuple[BoardPathParameters, HRMParameters]:
         L_block_cnt=4,
         H_cycle_cnt=2,
         L_cycle_cnt=2,
+        learnable_z_init=True,
         infer_segment_cnt=1,
         use_rope=True,
         use_abs_pos=False,
-        head_bias=False
-    )
-    return boardpath_params, hrm_params
-
-def get_config_1b() -> Tuple[BoardPathParameters, HRMParameters]:
-    boardpath_params = BoardPathParameters(
-        board_size=8,
-        train_count=5000,
-        val_count=500,
-        wall_prob=0.3
-    )
-
-    hrm_params = HRMParameters(
-        seq_len=boardpath_params.board_size * boardpath_params.board_size,
-        vocab_cnt=get_vocab_cnt(),
-        d_model=256,
-        head_cnt=8,
-        sdpa_dropout=0.1,
-        bias_qkv=False,
-        bias_o=False,
-        expansion=2.0,
-        elementwise_affine=True,
-        dropout=0.1,
-        H_block_cnt=4,
-        L_block_cnt=4,
-        H_cycle_cnt=2,
-        L_cycle_cnt=2,
-        infer_segment_cnt=1,
-        use_rope=False,
-        use_abs_pos=True,
-        head_bias=False
-    )
-    return boardpath_params, hrm_params
-
-# paper
-def get_config_2() -> Tuple[BoardPathParameters, HRMParameters]:
-    boardpath_params = BoardPathParameters(
-        board_size=4,
-        train_count=2000,
-        val_count=500,
-        wall_prob=0.3
-    )
-
-    hrm_params = HRMParameters(
-        seq_len=boardpath_params.board_size * boardpath_params.board_size,
-        vocab_cnt=get_vocab_cnt(),
-        d_model=512,
-        head_cnt=8,
-        sdpa_dropout=0.1,
-        bias_qkv=False,
-        bias_o=False,
-        expansion=4.0,
-        elementwise_affine=True,
-        dropout=0.1,
-        H_block_cnt=4,
-        L_block_cnt=4,
-        H_cycle_cnt=2,
-        L_cycle_cnt=2,
-        infer_segment_cnt=1,
-        use_rope=False,
-        use_abs_pos=True,
         head_bias=False
     )
     return boardpath_params, hrm_params
@@ -262,10 +192,10 @@ if __name__ == '__main__':
 
     # set_all_seeds(42)
 
-    boardpath_params, hrm_params = get_config_1()
+    boardpath_params, hrm_params = get_config()
 
     if args.mode == 'train':
-        hrm_train_params = get_train_config_1(boardpath_params)
+        hrm_train_params = get_train_config(boardpath_params)
         train_loader, val_loader = get_loaders(boardpath_params, hrm_train_params.batch_size)
         run_training(
             boardpath_params,
