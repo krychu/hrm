@@ -103,17 +103,15 @@ def run_inference(
         # Run a fixed number of segments (think time)
         for seg_idx in range(hrm_params.infer_segment_cnt):
             z, logits_bsv, frames = hrm(z, input_flat, True)
+
+            # First and last frame for subsequent segments are the same
+            if seg_idx != 0:
+                frames = frames[1:]
             all_frames += frames
             # z = (z[0].detach(), z[1].detach())
 
         predicted = logits_bsv.argmax(dim=-1) # [B,S]
         # predicted = torch.argmax(output_logits, dim=-1)  # [1, seq_len]
-
-    create_animated_gif(
-        all_frames,
-        filename="boardpath.gif",
-        board_size=boardpath_params.board_size
-    )
 
     print("\nINPUT BOARD:")
     print(format_board(input_board.flatten(), boardpath_params.board_size))
@@ -125,6 +123,13 @@ def run_inference(
     print(format_board(predicted.squeeze(0).cpu(), boardpath_params.board_size))
 
     print("\nLegend: . = Floor, # = Wall, S = Start, E = End, * = Path")
+    print()
+
+    create_animated_gif(
+        all_frames,
+        filename="boardpath.gif",
+        board_size=boardpath_params.board_size
+    )
 
 def get_loaders(boardpath_params: BoardPathParameters, batch_size: int) -> Tuple[DataLoader, DataLoader]:
     train_ds, val_ds = build_datasets(boardpath_params)

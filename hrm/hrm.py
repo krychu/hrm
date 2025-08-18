@@ -422,8 +422,7 @@ class HRM(nn.Module):
 
                 if (idx+1) % self.L_cycle_cnt == 0:
                     zH_bsd = self.H(zH_bsd, zL_bsd, cos_sin=cos_sin)
-
-                capture_frames and take_frame()
+                    capture_frames and take_frame()
 
         zL_bsd = self.L(zL_bsd, zH_bsd + x_bsd, cos_sin=cos_sin)
         zH_bsd = self.H(zH_bsd, zL_bsd, cos_sin=cos_sin)
