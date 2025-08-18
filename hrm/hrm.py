@@ -33,7 +33,6 @@ class HRMParameters:
 
     # hrm
     infer_segment_cnt: int # Number of forward passes per batch at inference (think time)
-    # Rather only RoPE or absolute positioning be used
     use_rope: bool # Use RoPE (rotary positioning encoding)
     use_abs_pos: bool # Use absolute position encoding
 
@@ -103,8 +102,15 @@ def apply_rope(q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.T
     Returns roped (q, k) with original dtypes preserved.
     """
     q_dtype, k_dtype = q.dtype, k.dtype
+
+    # Option A (stable): promote to cos/sin dtype (usually fp32)
     q = q.to(cos.dtype)
     k = k.to(cos.dtype)
+
+
+    # Option B (fast): keep q/k dtype, cast tables down
+    # cos = cos.to(q.dtype)
+    # sin = sin.to(q.dtype)
 
     # Broadcast cos/sin over batch and heads
     cos_ = cos.unsqueeze(0).unsqueeze(0)  # [1,1,S,Dh]
@@ -177,6 +183,9 @@ class SDPAttention(nn.Module):
             t_bshd = t_bsd.view(B, S, self.head_cnt, self.head_dim)
             t_bhsd = t_bshd.transpose(1, 2) # .continuous()?
             return t_bhsd
+
+        # def split_heads(t_bsd: torch.Tensor) -> torch.Tensor:
+        #     return t_bsd.reshape(B, S, self.head_cnt, self.head_dim).transpose(1, 2)
 
         q_bhsd = split_heads(q_bsd)
         k_bhsd = split_heads(k_bsd)
@@ -413,7 +422,7 @@ def setup_model_and_device(hrm_params: HRMParameters) -> Tuple[HRM, torch.device
     else:
         device = torch.device("cpu")
 
-    # device = torch.device("cpu")
+    device = torch.device("cpu")
 
     hrm = HRM(
         vocab_cnt=hrm_params.vocab_cnt,
@@ -447,6 +456,7 @@ def train_one_epoch(
         segment_cnt: int,
         grad_clip: float | None =None
 ):
+    assert(ce_loss.reduction == "mean")
     hrm.train()
 
     total_loss = 0.0
@@ -480,6 +490,17 @@ def train_one_epoch(
             zH, zL = z_bsd
             z_bsd = (zH.detach(), zL.detach())
 
+            # With reduction="mean" the loss is an average of per-token loss
+            # for this batch/segment. This loss is back propagated.
+            #
+            # For reporting, we sum the loss across all tokens (*B*S),
+            # segments, and batches. We then divide by all tokens that
+            # participated.
+            #
+            # This gives us per-token loss averaged across segments. Exactly
+            # what we optimize during training.
+            #
+            # Alternatively, we could take the last's segment loss.
             total_loss += float(loss.detach()) * B * S
             total_tokens += B * S
 
@@ -489,22 +510,30 @@ def train_one_epoch(
 @torch.no_grad()
 def evaluate(
     hrm: HRM,
+    ce_loss: nn.Module,
     segment_cnt: int,
     loader: DataLoader,
     device: torch.device,
 ) -> Tuple[float, float, float]:
+    """
+    For loss reporting: average per-token CE across all segments (same as
+    training.
+
+    For accuracy: use only final segment predictions.
+    )"""
     hrm.eval()
-    ce = nn.CrossEntropyLoss(reduction="sum")
+    assert(ce_loss.reduction == "mean")
     total_loss = 0.0
+    total_loss_tokens = 0
     total_correct = 0
     total_tokens = 0
     total_correct_samples = 0
     total_samples = 0
 
-    first_batch = True
     for x_bs, y_bs in loader:
         x_bs = x_bs.to(device)
         y_bs = y_bs.to(device)
+        B, S = x_bs.shape
 
         # fresh state each eval batch (stateless)
         z = hrm.init_z(x_bs)
@@ -514,36 +543,18 @@ def evaluate(
             z, logits_bsv = hrm(z, x_bs)
             z = (z[0].detach(), z[1].detach())
 
-        loss = ce(logits_bsv.transpose(1, 2), y_bs)
+            loss = ce_loss(logits_bsv.transpose(1, 2), y_bs)
+            total_loss += float(loss.detach()) * B * S
+            total_loss_tokens += B * S
+
         preds = logits_bsv.argmax(dim=-1) # [B,S]
 
-        # DEBUG: Show first sample as visual board
-        if first_batch and False:
-            symbols = {0: '.', 1: '#', 2: 'S', 3: 'E', 4: '*'}
-            b = 4
-            print("[DEBUG] First validation sample:")
-            for idx in range(3):
-                input_board = x_bs[idx].view(b, b)
-                target_board = y_bs[idx].view(b, b)
-                pred_board = preds[idx].view(b, b)
-
-                print("Input:   Target:  Predicted:")
-                for i in range(b):
-                    input_row = ' '.join(symbols.get(int(cell), str(int(cell))) for cell in input_board[i])
-                    target_row = ' '.join(symbols.get(int(cell), str(int(cell))) for cell in target_board[i])
-                    pred_row = ' '.join(symbols.get(int(cell), str(int(cell))) for cell in pred_board[i])
-                    print(f"{input_row}   {target_row}   {pred_row}")
-
-            print()
-            first_batch = False
-
         total_correct += (preds == y_bs).sum().item()
-        total_tokens += y_bs.numel()
+        total_tokens += y_bs.numel() # B * S
         total_correct_samples += count_matching_corresponding_rows(preds, y_bs)
         total_samples += preds.size(0)
-        total_loss += float(loss)
 
-    avg_loss = total_loss / total_tokens
+    avg_loss = total_loss / total_loss_tokens
     acc_cells = total_correct / total_tokens
     acc_samples = total_correct_samples / total_samples
     return avg_loss, acc_cells, acc_samples

@@ -31,6 +31,7 @@ def run_training(
 
     initial_val_loss, initial_val_acc_cells, initial_val_acc_samples = evaluate(
         hrm=hrm,
+        ce_loss=ce_loss,
         segment_cnt=hrm_params.infer_segment_cnt,
         loader=val_loader,
         device=device
@@ -52,6 +53,7 @@ def run_training(
         )
         val_loss, val_acc_cells, val_acc_samples = evaluate(
             hrm=hrm,
+            ce_loss=ce_loss,
             segment_cnt=hrm_params.infer_segment_cnt,
             loader=val_loader,
             device=device
@@ -151,7 +153,7 @@ def get_train_config_2(boardpath_params: BoardPathParameters) -> HRMTrainParamet
 
 def get_config_1() -> Tuple[BoardPathParameters, HRMParameters]:
     boardpath_params = BoardPathParameters(
-        board_size=8,
+        board_size=5,
         train_count=5000,
         val_count=500,
         wall_prob=0.3
@@ -174,7 +176,7 @@ def get_config_1() -> Tuple[BoardPathParameters, HRMParameters]:
         L_cycle_cnt=2,
         infer_segment_cnt=1,
         use_rope=True,
-        use_abs_pos=True,
+        use_abs_pos=False,
         head_bias=False
     )
     return boardpath_params, hrm_params
