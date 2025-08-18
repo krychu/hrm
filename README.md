@@ -19,13 +19,19 @@ Legend: . = Floor, \# = Wall, S = Start point, E = End point, * = Path
 ## Usage
 
 Dependencies: Python, PyTorch and Pillow <br/>
-`python -m pip install torch pillow`.
+```bash
+python -m pip install torch pillow
+```
 
 Train a model: <br/>
-`python boardpath.py --train`
+```bash
+python boardpath.py --train
+```
 
 Run inference on a random board (also saves an animated GIF of the steps): <br/>
-`python boardpath.py --inference`
+```
+python boardpath.py --inference
+```
 
 To adjust the task, model, or training setup, edit `get_config()` and `get_train_config()` in `boardpath.py`. For example:
 - Board size & obstacle density: `board_size`, `wall_prob`
