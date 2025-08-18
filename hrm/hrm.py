@@ -96,7 +96,6 @@ def rotate_half(x: torch.Tensor) -> torch.Tensor:
     x2 = x[..., Dh // 2:]
     return torch.cat((-x2, x1), dim=-1)
 
-@torch.no_grad()
 def apply_rope(q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor):
     """
     q,k: [B, H, S, Dh]
@@ -237,7 +236,7 @@ class HRMBlock(nn.Module):
         self.norm1 = nn.RMSNorm(d_model, elementwise_affine=elementwise_affine)
         self.drop = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
-    def forward(self, x_bsd: torch.Tensor, cos_sin: Tuple[torch.Tensor, torch.Tensor]):
+    def forward(self, x_bsd: torch.Tensor, cos_sin: Tuple[torch.Tensor, torch.Tensor] | None):
         # Attention sublayer
         x_bsd = self.norm0( (x_bsd + self.drop(self.attn(x_bsd, cos_sin=cos_sin))) )
         # MLP sublayer
@@ -275,7 +274,7 @@ class ReasoningModule(nn.Module):
             self,
             x_bsd: torch.Tensor,
             x_bsd_injection: torch.Tensor,
-            cos_sin: Tuple[torch.Tensor, torch.Tensor]
+            cos_sin: Tuple[torch.Tensor, torch.Tensor] | None
     ) -> torch.Tensor:
         x_bsd = x_bsd + x_bsd_injection
         for hrm_block in self.hrm_blocks:
@@ -316,6 +315,7 @@ class HRM(nn.Module):
         )
         self.rotary = None
         if use_rope:
+            assert(d_model // head_cnt) % 2 == 0
             self.rotary = RotaryEmbedding(
                 head_dim=d_model // head_cnt,
                 max_position_embeddings=seq_len,
@@ -389,9 +389,8 @@ class HRM(nn.Module):
         x_bsd = self.embed(x_bs)
 
         # Get RoPE tables once per call (buffers already on correct device)
-        cos_sin = None
-        if self.rotary is not None:
-            cos_sin = self.rotary(self.seq_len)  # (cos, sin) each [S, Dh]
+        S = x_bs.size(1) # seq len
+        cos_sin = self.rotary(S) if self.rotary is not None else None # (cos, sin) each [S, Dh]
 
         with torch.no_grad():
             for idx in range(self.H_cycle_cnt * self.L_cycle_cnt - 1):
@@ -493,12 +492,14 @@ def evaluate(
     segment_cnt: int,
     loader: DataLoader,
     device: torch.device,
-):
+) -> Tuple[float, float, float]:
     hrm.eval()
     ce = nn.CrossEntropyLoss(reduction="sum")
     total_loss = 0.0
     total_correct = 0
     total_tokens = 0
+    total_correct_samples = 0
+    total_samples = 0
 
     first_batch = True
     for x_bs, y_bs in loader:
@@ -523,7 +524,7 @@ def evaluate(
             print("[DEBUG] First validation sample:")
             for idx in range(3):
                 input_board = x_bs[idx].view(b, b)
-                target_board = y_bs[idx].view(b, b) 
+                target_board = y_bs[idx].view(b, b)
                 pred_board = preds[idx].view(b, b)
 
                 print("Input:   Target:  Predicted:")
@@ -538,11 +539,14 @@ def evaluate(
 
         total_correct += (preds == y_bs).sum().item()
         total_tokens += y_bs.numel()
+        total_correct_samples += count_matching_corresponding_rows(preds, y_bs)
+        total_samples += preds.size(0)
         total_loss += float(loss)
 
     avg_loss = total_loss / total_tokens
-    acc = total_correct / total_tokens
-    return avg_loss, acc
+    acc_cells = total_correct / total_tokens
+    acc_samples = total_correct_samples / total_samples
+    return avg_loss, acc_cells, acc_samples
 
 def hrm_summary(hrm_params: HRMParameters, hrm_train_params: HRMTrainParameters, hrm: HRM, device: torch.device) -> None:
     trainable_params = sum(p.numel() for p in hrm.parameters() if p.requires_grad)
@@ -595,3 +599,9 @@ def set_all_seeds(seed: int):
 
     if torch.backends.mps.is_available():
         torch.mps.manual_seed(seed)
+
+def count_matching_corresponding_rows(a: torch.Tensor, b: torch.Tensor) -> int:
+    assert(len(a.shape)==2 and len(b.shape)==2)
+    assert(a.shape == b.shape)
+    matches = (a == b).all(dim=1)
+    return int(matches.sum().item())
