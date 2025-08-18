@@ -10,33 +10,27 @@ Both are based on self-attention. Together, they enable reasoning in latent spac
 
 ## Demo application
 
-The model is applied to a pathfinding task: given an N×N board with obstacles, find the shortest path from START to END. Example:
+The model is applied to a pathfinding task: given an N×N board with obstacles, find the shortest path from START to END. The animation below shows actual inference steps as the model incrementally discovers the path.
 
 <img width="300" src="https://github.com/user-attachments/assets/5bea57e8-5bec-4843-a945-25c49c0c4f1c" />
 
-```
-Legend:
-.    Floor
-#    Wall (obstacle)
-S    Start point
-E    End point
-*    Path (present only in the solution)
-```
+Legend: . = Floor, \# = Wall, S = Start point, E = End point, * = Path
 
 ## Usage
 
-The only dependencies are Python, PyTorch and Pillow: `python -m pip install torch pillow`.
+Dependencies: Python, PyTorch and Pillow <br/>
+`python -m pip install torch pillow`.
 
-Train a model:
+Train a model: <br/>
 `python boardpath.py --train`
 
-Run inference on a random board:
-`> python boardpath.py --inference`
+Run inference on a random board (also saves an animated GIF of the steps): <br/>
+`python boardpath.py --inference`
 
 To adjust the task, model, or training setup, edit `get_config()` and `get_train_config()` in `boardpath.py`. For example:
 - Board size & obstacle density: `board_size`, `wall_prob`
 - Embedding dimensionality (representation of each board cell): `d_model`
-- # of iterations ("think time"): `H_cycle_cnt`, `L_cycle_cnt`
+- \# of iterations ("think time"): `H_cycle_cnt`, `L_cycle_cnt`
 
 All parameters are documented in `hrm/hrm.py`.
 
@@ -52,7 +46,7 @@ All parameters are documented in `hrm/hrm.py`.
 
 ## Model architecture
 
-- `HRM` = `InputEmbedding` + two `ReasoningModule` instances (H and L) + linear projection
+- `HRM` = `InputEmbedding` + two `ReasoningModule` instances (H and L) + linear projection (on last H state)
 - `InputEmbedding` = `nn.Embedding` for tokens + optional absolute positional `nn.Embedding` (added to token embeddings)
 - `ReasoningModule` = stack of `HRMBlock` instances
 - `HRMBlock` has two sublayers:
