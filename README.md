@@ -6,16 +6,6 @@ The architecture is inspired by hierarchical, multi-timescale processing in the 
 - **H module** (slower): handles abstract planning
 - **L module** (faster): handles low-level computations
 
-Both are based on self-attention. Together, they enable reasoning in latent space.
-
-## Hierarchical Reasoning Model (HRM)
-
-This is an implementation of the <a href="https://arxiv.org/abs/2506.21734">Hierachical Reasoning Model</a> (HRM) proposed by Guan Wang et al. I built it for educational purposes, with a few minor simplifications and extensions (see [Modifications to the Original Work](#modifications-to-the-original-work)).
-
-The architecture is inspired by hierarchical, multi-timescale processing in the human brain. It uses two connected recurrent modules running at different frequencies:
-- **H module** (slower): handles abstract planning
-- **L module** (faster): handles low-level computations
-
 Both are based on self-attention. Together, this is an attempt to model reasoning in latent space.
 
 ---
