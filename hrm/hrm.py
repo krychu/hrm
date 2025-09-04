@@ -6,7 +6,6 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from typing import *
 import random
-import numpy as np
 
 @dataclass
 class HRMParameters:
@@ -620,7 +619,6 @@ def hrm_summary(hrm_params: HRMParameters, hrm_train_params: HRMTrainParameters,
 def set_all_seeds(seed: int):
     torch.manual_seed(seed)
     random.seed(seed)
-    np.random.seed(seed)
 
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)

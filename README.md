@@ -10,9 +10,7 @@ Both are based on self-attention. Together, this is an attempt to model reasonin
 
 ---
 
-👉 See [**Ablation Study: What Drives Performance?**](#ablation-study-what-drives-performance) for results on whether the H/L architecture is the main driver of HRM performance.
-
-> **Note:** The ablation study section provides controlled experiments on the pathfinding task, examining segments, cycles, and architecture to understand what actually drives performance.
+👉 See [**Ablation Study: What Drives HRM Performance?**](#ablation-study-what-drives-performance)
 
 ## Demo application
 
@@ -24,25 +22,24 @@ Legend: . = Floor, \# = Wall, S = Start point, E = End point, * = Path
 
 ## Usage
 
-Dependencies: `Python`, `PyTorch` and `Pillow` <br/>
+Dependencies: <br/>
 ```bash
-python -m pip install torch pillow
+python3 -m pip install torch pillow
 ```
 
 Train a model: <br/>
 ```bash
-python boardpath.py --mode train
+python3 boardpath.py --mode train
 ```
 
 Run inference on a random board (also saves an animated GIF of the steps): <br/>
 ```
-python boardpath.py --mode inference
+python3 boardpath.py --mode inference
 ```
 
 To adjust the task, model, or training setup, edit `get_config()` and `get_train_config()` in `boardpath.py`. For example:
 - Board size & obstacle density: `board_size`, `wall_prob`
 - Embedding dimensionality (representation of each board cell): `d_model`
-- \# of iterations ("think time"): `H_cycle_cnt`, `L_cycle_cnt`
 
 All parameters are documented in `hrm/hrm.py`.
 
