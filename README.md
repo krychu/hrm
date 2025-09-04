@@ -149,7 +149,7 @@ This effect is visible both in training curves and behavior:
 
 - **Behavior:** Additional inference steps refine working prediction:
 
-<img width="300" src="https://github.com/user-attachments/assets/53eee809-6c21-4179-8ab3-9daf4ab74e62" /> <img width="300" src="https://github.com/user-attachments/assets/c4dec441-f1bc-4180-814c-93e1113b367c" />
+<img width="400" src="https://github.com/user-attachments/assets/53eee809-6c21-4179-8ab3-9daf4ab74e62" /> <img width="400" src="https://github.com/user-attachments/assets/c4dec441-f1bc-4180-814c-93e1113b367c" />
 
 The idea of iterative refinement is not entirely new, it has appeared in recurrent networks, diffusion models, and iterative decoding schemes. What is notable here is that the same effect emerges naturally when training HRM (or even single-module baselines) with multiple refinement segments.
 
