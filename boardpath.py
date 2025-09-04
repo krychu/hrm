@@ -159,7 +159,7 @@ def get_loaders(boardpath_params: BoardPathParameters, batch_size: int) -> Tuple
 def get_train_config(boardpath_params: BoardPathParameters) -> HRMTrainParameters:
     return HRMTrainParameters(
         train_segment_cnt=2,
-        epoch_cnt=40,
+        epoch_cnt=30,
         weight_decay=0.01,
         grad_clip=None,
         batch_size=64,
