@@ -12,11 +12,14 @@ Both are based on self-attention. Together, this is an attempt to model reasonin
 
 👉 See [**Ablation Study: What Drives HRM Performance?**](#ablation-study-what-drives-performance)
 
-## Demo application
+## Demo application: pathfinding
 
 The model is applied to a pathfinding task: given an N×N board with obstacles, find the shortest path from START to END. The animation below shows actual inference steps as the model incrementally discovers the path.
 
-<img width="300" src="https://github.com/user-attachments/assets/5bea57e8-5bec-4843-a945-25c49c0c4f1c" />
+| 10x10 board | 20x20 board | 30x30 board |
+|-------------|-------------|-------------|
+| <img width="280" src="https://github.com/user-attachments/assets/5bea57e8-5bec-4843-a945-25c49c0c4f1c" /> | <img width="310" src="https://github.com/user-attachments/assets/26a9a202-b23c-4c1e-ad73-04f858fba8de" /> | <img width="320" src="https://github.com/user-attachments/assets/0f621ebe-e6ae-4e72-9624-8e8e40bd90a5" /> |
+
 
 Legend: . = Floor, \# = Wall, S = Start point, E = End point, * = Path
 
@@ -63,11 +66,11 @@ All parameters are documented in `hrm/hrm.py`.
   2. MLP: `SwiGLU` → `Dropout` → residual → `RMSNorm`
 - `SDPAttention` = scaled dot-product attention + linear projection, with optional RoPE
 
-## Ablation Study: What Drives Performance?
+## Ablation Study: What Drives HRM Performance?
 
 Recent discussion around the Hierarchical Reasoning Model (HRM) raised a key question: **is the new two-timescale H/L architecture really the source of its strong performance?**
 
-**TL;DR:** The main driver of performance is **training with more refinement segments**, not the H/L two-timescale split. Training with more segments teaches the model to refine its predictions when given extra inference steps. (See how this aligns study by the ARC Prize team, [link](#relation-to-arc-prize-analysis)).*
+**TL;DR:** The main driver of performance is **training with more refinement segments**, not the H/L two-timescale split. Training with more segments teaches the model to refine its predictions when given extra inference steps. (See how this aligns with study by the ARC Prize team, [link](#relation-to-arc-prize-analysis)).
 
 This analysis was carried out on a **board pathfinding task** (20×20 boards, wall probability = 0.3). Each variant was trained on **2000 training boards** and validated on **500 boards**, for **40 epochs** with **lr = 3e-4** and **batch size = 64**. Results are averaged across multiple runs.
 
@@ -134,19 +137,21 @@ Results aggregated by dimension. (Averaging top-3 or last-5 epochs leads to the 
 | 16     | **0.56**         | +0.03      |
 
 ### Iterative Refinement in Action
-Training with more segments not only improves accuracy but also teaches the model to refine its predictions when given additional inference steps.
+Training with more segments 1) improves accuracy but also 2) teaches the model to refine its predictions when given additional inference steps.
 
-This effect is visible both in metrics and behavior:
+This effect is visible both in training curves and behavior:
 
 - **Training curves:** With 2 training segments, board accuracy improves but acc and acc4x remain nearly identical. With 4 training segments, accuracy is higher *and* a clear gap opens up between acc and acc4x, showing the model learns to refine further at inference.
 
 | Train Segments = 2 | Train Segments = 4 |
 |--------------------|--------------------|
-| ![](log_HL_hl22_t2_i2.png) | ![](log_HL_hl22_t4_i2.png) |
+| <img width="1000" height="600" alt="log_HL_hl22_t2_i2" src="https://github.com/user-attachments/assets/32594c32-d601-497d-b61a-b3a09b820436" /> | <img width="1000" height="600" alt="log_HL_hl22_t4_i2" src="https://github.com/user-attachments/assets/c81611a8-8c0f-4134-b502-ce51898cc245" /> |
 
-- **Animated demo:** An inference run shows the model solving a board step by step, refining its predictions across segments ([see GIF](boardpath.gif)).
+- **Behavior:** Additional inference steps refine working prediction:
 
-The idea of iterative refinement is not entirely new — it has appeared in recurrent networks, diffusion models, and iterative decoding schemes. What is notable here is that the same effect emerges naturally when training HRM (or even single-module baselines) with multiple refinement segments.
+<img width="300" src="https://github.com/user-attachments/assets/53eee809-6c21-4179-8ab3-9daf4ab74e62" /> <img width="300" src="https://github.com/user-attachments/assets/c4dec441-f1bc-4180-814c-93e1113b367c" />
+
+The idea of iterative refinement is not entirely new, it has appeared in recurrent networks, diffusion models, and iterative decoding schemes. What is notable here is that the same effect emerges naturally when training HRM (or even single-module baselines) with multiple refinement segments.
 
 ### Conclusions
 1. **Segments drive performance.** Using 4 segments instead of 2 leads to higher board accuracy and larger refinement gaps.
@@ -156,4 +161,4 @@ The idea of iterative refinement is not entirely new — it has appeared in recu
 5. **Robust across metrics.** These findings hold when using best, top-3, or last-5 epoch averages.
 
 ### Relation to ARC Prize Analysis
-These results are consistent with the independent study by the ARC Prize team ([blog](https://arcprize.org/blog/hrm-analysis), [slides](https://docs.google.com/presentation/d/12IAuVKZXvbW6uCwzDhzN1PBh4fdjypjqyucYzoKJKMg/edit?slide=id.g32b23b2ea24_0_13#slide=id.g32b23b2ea24_0_13)). Their analysis on ARC tasks also found that outer-loop refinement drives performance, while the H/L split is not decisive. The pathfinding experiments here provide an additional supporting data point on a different benchmark, arriving at the same overall conclusions.
+These results are consistent with the study by the ARC Prize team ([blog](https://arcprize.org/blog/hrm-analysis), [slides](https://docs.google.com/presentation/d/12IAuVKZXvbW6uCwzDhzN1PBh4fdjypjqyucYzoKJKMg/edit?slide=id.g32b23b2ea24_0_13#slide=id.g32b23b2ea24_0_13)). Their analysis on ARC tasks also found that outer-loop refinement drives performance, while the H/L split is not decisive. The pathfinding experiments here provide an additional supporting data point on a different benchmark, arriving at the same overall conclusions.
