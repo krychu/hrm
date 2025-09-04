@@ -37,7 +37,11 @@ def run_training(
         loader=val_loader,
         device=device
     )
-    print(f"[val] initial loss: {initial_val_loss:.4f} acc[cell]: {initial_val_acc_cells:.3f} acc[board]: {initial_val_acc_samples:.3f}")
+    print(f"""cell acc = accuracy of predicting class of a cell correctly
+board acc = accuracy of predicting entire board correctly
+acc4x = respective accuracy with 4x more think time (4*segment_cnt)
+    """)
+    print(f"[val] initial loss: {initial_val_loss:.4f} cell acc: {initial_val_acc_cells:.3f} board acc: {initial_val_acc_samples:.3f}")
 
     best_val_loss = math.inf
     for epoch_idx in range(hrm_train_params.epoch_cnt):
@@ -59,10 +63,17 @@ def run_training(
             loader=val_loader,
             device=device
         )
+        _, val_acc_cells_4x, val_acc_samples_4x = evaluate(
+            hrm=hrm,
+            ce_loss=ce_loss,
+            segment_cnt=4 * hrm_params.infer_segment_cnt,
+            loader=val_loader,
+            device=device
+        )
 
         epoch_time = time.time() - epoch_start_time
 
-        print(f"epoch: {epoch_idx+1:03d} [trn] loss: {train_loss:.4f} [val] loss: {val_loss:.4f} acc[cell]: {val_acc_cells:.3f} acc[board]: {val_acc_samples:.3f} (time: {epoch_time:.0f}s)")
+        print(f"epoch: {epoch_idx+1:03d} [trn] loss: {train_loss:.4f} [val] loss: {val_loss:.4f}, cell acc/acc4x: {val_acc_cells:.3f}/{val_acc_cells_4x:.3f}, board acc/acc4x: {val_acc_samples:.3f}/{val_acc_samples_4x:.3f} (time: {epoch_time:.0f}s)")
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -148,9 +159,9 @@ def get_loaders(boardpath_params: BoardPathParameters, batch_size: int) -> Tuple
 def get_train_config(boardpath_params: BoardPathParameters) -> HRMTrainParameters:
     return HRMTrainParameters(
         train_segment_cnt=2,
-        epoch_cnt=30,
-        weight_decay=0.01, # default: 0.01, try 0.1
-        grad_clip=None, # 1.0
+        epoch_cnt=40,
+        weight_decay=0.01,
+        grad_clip=None,
         batch_size=64,
         lr=3e-4
     )
@@ -160,7 +171,7 @@ def get_config() -> Tuple[BoardPathParameters, HRMParameters]:
         board_size=10,
         train_count=4000,
         val_count=500,
-        wall_prob=0.4
+        wall_prob=0.3
     )
 
     hrm_params = HRMParameters(
@@ -282,8 +293,6 @@ if __name__ == '__main__':
     parser.add_argument('--model', default='boardpath.pt',
                         help='Model file path (default: boardpath.pt)')
     args = parser.parse_args()
-
-    # set_all_seeds(42)
 
     boardpath_params, hrm_params = get_config()
 
