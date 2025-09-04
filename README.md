@@ -70,7 +70,7 @@ All parameters are documented in `hrm/hrm.py`.
 
 Recent discussion around the Hierarchical Reasoning Model (HRM) raised a key question: **is the new two-timescale H/L architecture really the source of its strong performance?**
 
-**TL;DR:** The main driver of performance is **training with more refinement segments**, not the H/L two-timescale split. Training with more segments teaches the model to refine its predictions when given extra inference steps. (See how this aligns with study by the ARC Prize team, [link](#relation-to-arc-prize-analysis)).
+**TL;DR:** The main driver of performance is **training with more refinement segments**, not the H/L two-timescale split. Training with more segments teaches the model to refine its predictions when given extra inference steps. (See how this aligns with study by the ARC Prize team, [here](#relation-to-arc-prize-analysis)).
 
 This analysis was carried out on a **board pathfinding task** (20×20 boards, wall probability = 0.3). Each variant was trained on **2000 training boards** and validated on **500 boards**, for **40 epochs** with **lr = 3e-4** and **batch size = 64**. Results are averaged across multiple runs.
 
