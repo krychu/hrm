@@ -16,9 +16,9 @@ Both are based on self-attention. Together, this is an attempt to model reasonin
 
 The model is applied to a pathfinding task: given an N×N board with obstacles, find the shortest path from START to END. The animation below shows actual inference steps as the model incrementally discovers the path.
 
-| 10x10 board | 20x20 board | 30x30 board |
-|-------------|-------------|-------------|
-| <img width="280" src="https://github.com/user-attachments/assets/5bea57e8-5bec-4843-a945-25c49c0c4f1c" /> | <img width="310" src="https://github.com/user-attachments/assets/26a9a202-b23c-4c1e-ad73-04f858fba8de" /> | <img width="320" src="https://github.com/user-attachments/assets/0f621ebe-e6ae-4e72-9624-8e8e40bd90a5" /> |
+| 10x10 board | 20x20 board |
+|-------------|-------------|
+| <img width="320" src="https://github.com/user-attachments/assets/5bea57e8-5bec-4843-a945-25c49c0c4f1c" /> | <img width="350" src="https://github.com/user-attachments/assets/26a9a202-b23c-4c1e-ad73-04f858fba8de" />
 
 
 Legend: . = Floor, \# = Wall, S = Start point, E = End point, * = Path
