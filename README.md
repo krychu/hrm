@@ -121,6 +121,8 @@ In the table:
 
 3. **Cycles increase accuracy but not refinement.** More cycles raise board accuracy a bit, but not the refinement ability.
 
+That said, one notable aspect of H/L is that it achieves high performance and refinement ability with detachment (no BPTT) and segment training, potentially reducing training cost — something not explored in detail here.
+
 These findings are consistent with the ARC Prize team’s analysis ([blog](https://arcprize.org/blog/hrm-analysis), [slides](https://docs.google.com/presentation/d/12IAuVKZXvbW6uCwzDhzN1PBh4fdjypjqyucYzoKJKMg/edit?slide=id.g32b23b2ea24_0_13#slide=id.g32b23b2ea24_0_13)), which also concluded that outer-loop refinement is the main driver of performance, not the H/L split.
 
 ### Iterative Refinement in Action
