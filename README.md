@@ -68,18 +68,13 @@ All parameters are documented in `hrm/hrm.py`.
 
 ## Ablation Study: What Drives HRM Performance?
 
-Recent discussion around the Hierarchical Reasoning Model (HRM) raised a key question: **is the new two-timescale H/L architecture really the source of its strong performance?**
+Recent discussion around the Hierarchical Reasoning Model (HRM) asks whether it's the new two-timescale H/L architecture that drives the performance.
 
-**TL;DR:** The main driver of performance is **training with more refinement segments**, not the H/L two-timescale split. Training with more segments teaches the model to refine its predictions when given extra inference steps. (See how this aligns with study by the ARC Prize team, [here](#relation-to-arc-prize-analysis)).
+To explore this, I ran a simple set of ablations on a **board pathfinding task** (20×20 boards, wall probability = 0.3). Each variant was trained on **2000 training boards** and validated on **500 boards**, for **40 epochs** with **lr = 3e-4** and **batch size = 64**. Models were parameter-matched: H/L variants used *d_model = 256* (~6.29M parameters), single-module variants used *d_model = 360* (~6.23M parameters).
 
-This analysis was carried out on a **board pathfinding task** (20×20 boards, wall probability = 0.3). Each variant was trained on **2000 training boards** and validated on **500 boards**, for **40 epochs** with **lr = 3e-4** and **batch size = 64**. Results are averaged across multiple runs.
+This is a small study on a relatively simple task, so the results should be taken as illustrative rather than definitive.
 
-- **Architecture details:**
-  - Base HRM: *d_model = 256*, *4 heads*, *H/L blocks = 4*, *RoPE positional encoding*, *dropout = 0.1*.
-  - H/L models: ~6.29M parameters.
-  - Single-module models: ~6.23M parameters, matched by using *d_model = 360* instead of 256.
-
-The results highlight key factors in this domain but should not be taken as comprehensive or conclusive evidence about the H/L architecture in general.
+---
 
 ### What Was Varied
 - **Architecture (variant):**
@@ -90,75 +85,70 @@ The results highlight key factors in this domain but should not be taken as comp
 - **Inference segments (infer_seg):** number of refinement segments during evaluation.
 - **Cycles:** number of inner iterations (H×L).
 
+---
+
 ### Results (all runs)
 
-In the tables below:
-- **board acc** = accuracy of predicting the entire board correctly.
+In the table:
+- **board acc** = accuracy of predicting the entire board correctly (last 5 epochs average).
 - **acc4x** = the same metric, but with 4× more inference segments (extra test-time refinement).
 - **Gap** = acc4x – board acc, showing how much accuracy improves with additional inference steps.
 
-| Variant            | train_seg | infer_seg | H×L cycles | Best board acc | acc4x | Gap   |
-|--------------------|-----------|-----------|------------|----------------|-------|-------|
-| H-only (detached)  | 2         | 2         | 4          | 0.236          | 0.250 | +0.014|
-| H-only (detached)  | 2         | 2         | 8          | 0.272          | 0.280 | +0.008|
-| H-only (detached)  | 4         | 2         | 4          | 0.458          | 0.544 | +0.086|
-| H-only (bptt)      | 2         | 2         | 4          | 0.274          | 0.336 | +0.062|
-| H-only (bptt)      | 2         | 2         | 8          | 0.424          | 0.454 | +0.030|
-| H-only (bptt)      | 4         | 2         | 4          | **0.616**      | **0.676** | +0.060|
-| H/L                | 2         | 2         | 4          | 0.438          | 0.416 | -0.022|
-| H/L                | 2         | 2         | 16         | 0.544          | 0.582 | +0.038|
-| H/L                | 4         | 2         | 4          | 0.452          | 0.566 | +0.114|
-| H/L                | 4         | 2         | 16         | 0.566          | 0.588 | +0.022|
+| Variant            | train_seg | infer_seg | H×L cycles | Board acc (last-5) | acc4x (last-5) | Gap   |
+|--------------------|-----------|-----------|------------|---------------------|----------------|-------|
+| H/L                | 2         | 2         | 2×2 (4)    | 0.390               | 0.382          | -0.008|
+| H/L                | 4         | 2         | 2×2 (4)    | 0.320               | 0.425          | +0.104|
+| H/L                | 2         | 2         | 2×4 (8)    | 0.403               | 0.444          | +0.041|
+| H/L                | 4         | 2         | 2×4 (8)    | 0.447               | 0.552          | +0.105|
+| H/L                | 2         | 2         | 4×2 (8)    | 0.458               | 0.481          | +0.023|
+| H/L                | 4         | 2         | 4×2 (8)    | 0.523               | 0.545          | +0.022|
+| H-only (bptt)      | 2         | 2         | 4          | 0.226               | 0.272          | +0.046|
+| H-only (detached)  | 2         | 2         | 4          | 0.158               | 0.182          | +0.024|
+| H-only (bptt)      | 4         | 2         | 4          | **0.574**           | **0.625**      | +0.052|
+| H-only (detached)  | 4         | 2         | 4          | 0.347               | 0.436          | +0.089|
+| H-only (bptt)      | 2         | 2         | 8          | 0.376               | 0.394          | +0.018|
+| H-only (detached)  | 2         | 2         | 8          | 0.222               | 0.226          | +0.005|
 
-### Aggregates
-Results aggregated by dimension. (Averaging top-3 or last-5 epochs leads to the same conclusions.)
+---
 
-**By training segments**
+### Charts
 
-| train_seg | Board acc (best) | Gap (best) |
-|-----------|------------------|------------|
-| 2         | 0.36             | +0.02      |
-| 4         | **0.50**         | **+0.08**  |
+**Board accuracy (last 5 epochs average):**
 
-**By architecture**
+| acc by variant | acc by train_seg | acc by cycles |
+|----------------|------------------|---------------|
+| img | img | img
 
-| Variant            | Board acc (best) | Gap (best) |
-|--------------------|------------------|------------|
-| H/L                | 0.48             | +0.04      |
-| H-only (bptt)      | 0.44             | +0.05      |
-| H-only (detached)  | 0.30             | +0.05      |
+**Refinement gap (last 5 epochs average):**
 
-**By total cycles**
+| gap by variant | gap by train_set | gap by cycles |
+|----------------|------------------|---------------|
+| img | img | img |
 
-| Cycles | Board acc (best) | Gap (best) |
-|--------|------------------|------------|
-| 4      | 0.39             | **+0.06**  |
-| 8      | 0.35             | +0.02      |
-| 16     | **0.56**         | +0.03      |
+---
+
+### Conclusions
+1. **Segments are the main driver.**
+   They improve both accuracy and refinement ability.
+
+2. **Architecture has little influence.**
+   H/L and single-module BPTT perform similarly; any differences are minor compared to the impact of segments.
+
+3. **Cycles increase accuracy but not refinement.**
+   More cycles raise board accuracy, but the refinement gap stays about the same.
+
+---
+
+### Relation to ARC Prize Analysis
+These results are consistent with the study by the ARC Prize team ([blog](https://arcprize.org/blog/hrm-analysis), [slides](https://docs.google.com/presentation/d/12IAuVKZXvbW6uCwzDhzN1PBh4fdjypjqyucYzoKJKMg/edit?slide=id.g32b23b2ea24_0_13#slide=id.g32b23b2ea24_0_13)). Their analysis on ARC tasks also found that outer-loop refinement drives performance, while the H/L split is not decisive. The pathfinding experiments here provide an additional supporting data point.
 
 ### Iterative Refinement in Action
-Training with more segments 1) improves accuracy but also 2) teaches the model to refine its predictions when given additional inference steps.
+When trained with more segments, the model reaches higher accuracy and better refines its predictions when given extra inference steps.
 
-This effect is visible both in training curves and behavior:
-
-- **Training curves:** With 2 training segments, board accuracy improves but acc and acc4x remain nearly identical. With 4 training segments, accuracy is higher *and* a clear gap opens up between acc and acc4x, showing the model learns to refine further at inference.
+The refinement process is visible in how solutions emerge: early steps make broad strokes, while later steps progressively add smaller corrections until the full path is resolved.
 
 | Train Segments = 2 | Train Segments = 4 |
 |--------------------|--------------------|
 | <img width="1000" height="600" alt="log_HL_hl22_t2_i2" src="https://github.com/user-attachments/assets/32594c32-d601-497d-b61a-b3a09b820436" /> | <img width="1000" height="600" alt="log_HL_hl22_t4_i2" src="https://github.com/user-attachments/assets/c81611a8-8c0f-4134-b502-ce51898cc245" /> |
 
-- **Behavior:** Additional inference steps refine working prediction:
-
 <img width="400" src="https://github.com/user-attachments/assets/53eee809-6c21-4179-8ab3-9daf4ab74e62" /> <img width="400" src="https://github.com/user-attachments/assets/c4dec441-f1bc-4180-814c-93e1113b367c" />
-
-The idea of iterative refinement is not entirely new, it has appeared in recurrent networks, diffusion models, and iterative decoding schemes. What is notable here is that the same effect emerges naturally when training HRM (or even single-module baselines) with multiple refinement segments.
-
-### Conclusions
-1. **Segments drive performance.** Using 4 segments instead of 2 leads to higher board accuracy and larger refinement gaps.
-2. **Models learn to refine.** Training with more segments improves the ability to refine predictions when given extra inference steps.
-3. **H/L is not the main driver.** The two-timescale architecture is competitive but does not outperform a single-module trained with BPTT.
-4. **Cycles help to a point.** More inner iterations increase board accuracy somewhat, but refinement ability is strongest at moderate cycle counts.
-5. **Robust across metrics.** These findings hold when using best, top-3, or last-5 epoch averages.
-
-### Relation to ARC Prize Analysis
-These results are consistent with the study by the ARC Prize team ([blog](https://arcprize.org/blog/hrm-analysis), [slides](https://docs.google.com/presentation/d/12IAuVKZXvbW6uCwzDhzN1PBh4fdjypjqyucYzoKJKMg/edit?slide=id.g32b23b2ea24_0_13#slide=id.g32b23b2ea24_0_13)). Their analysis on ARC tasks also found that outer-loop refinement drives performance, while the H/L split is not decisive. The pathfinding experiments here provide an additional supporting data point on a different benchmark, arriving at the same overall conclusions.
