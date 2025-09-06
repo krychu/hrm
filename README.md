@@ -87,7 +87,7 @@ In the table:
 - **acc4x** = the same metric, but with 4× more inference segments (extra test-time refinement).
 - **Gap** = acc4x – board acc, showing how much accuracy improves with additional inference steps.
 
-| Variant            | train_seg | infer_seg | H×L cycles | Board acc (last-5) | acc4x (last-5) | Gap   |
+| Variant            | train_seg | infer_seg | H×L cycles | Board acc           | acc4x          | Gap   |
 |--------------------|-----------|-----------|------------|---------------------|----------------|-------|
 | H/L                | 2         | 2         | 2×2 (4)    | 0.390               | 0.382          | -0.008|
 | H/L                | 4         | 2         | 2×2 (4)    | 0.320               | 0.425          | +0.104|
@@ -130,10 +130,10 @@ With 2 training segments, board accuracy improves but acc and acc4x remain nearl
 
 | Train Segments = 2 | Train Segments = 4 |
 |--------------------|--------------------|
-| <img width="400" alt="log_HL_hl22_t2_i2" src="https://github.com/user-attachments/assets/32594c32-d601-497d-b61a-b3a09b820436" /> | <img width="400" alt="log_HL_hl22_t4_i2" src="https://github.com/user-attachments/assets/c81611a8-8c0f-4134-b502-ce51898cc245" /> |
+| <img width="380" alt="log_HL_hl22_t2_i2" src="https://github.com/user-attachments/assets/32594c32-d601-497d-b61a-b3a09b820436" /> | <img width="390" alt="log_HL_hl22_t4_i2" src="https://github.com/user-attachments/assets/c81611a8-8c0f-4134-b502-ce51898cc245" /> |
 
 The refinement process is visible in how solutions emerge: early steps make broad strokes, while later steps progressively add smaller corrections until the full path is resolved.
 
 | 20x20 board refinement | 30x30 board refinement |
 |------------------------|------------------------|
-| <img width="400" src="https://github.com/user-attachments/assets/53eee809-6c21-4179-8ab3-9daf4ab74e62" /> | <img width="400" src="https://github.com/user-attachments/assets/c4dec441-f1bc-4180-814c-93e1113b367c" /> |
+| <img width="380" src="https://github.com/user-attachments/assets/53eee809-6c21-4179-8ab3-9daf4ab74e62" /> | <img width="390" src="https://github.com/user-attachments/assets/c4dec441-f1bc-4180-814c-93e1113b367c" /> |
