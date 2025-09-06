@@ -128,19 +128,13 @@ In the table:
 ---
 
 ### Conclusions
-1. **Segments are the main driver.**
-   They improve both accuracy and refinement ability.
+1. **Segments are the main driver.** This applies to both accuracy and refinement ability.
 
-2. **Architecture has little influence.**
-   H/L and single-module BPTT perform similarly; any differences are minor compared to the impact of segments.
+2. **Architecture has little influence.** H/L and single-module BPTT perform similarly; any differences are minor compared to the impact of segments.
 
-3. **Cycles increase accuracy but not refinement.**
-   More cycles raise board accuracy, but the refinement gap stays about the same.
+3. **Cycles increase accuracy but not refinement.** More cycles raise board accuracy a bit, but not the refinement gap.
 
----
-
-### Relation to ARC Prize Analysis
-These results are consistent with the study by the ARC Prize team ([blog](https://arcprize.org/blog/hrm-analysis), [slides](https://docs.google.com/presentation/d/12IAuVKZXvbW6uCwzDhzN1PBh4fdjypjqyucYzoKJKMg/edit?slide=id.g32b23b2ea24_0_13#slide=id.g32b23b2ea24_0_13)). Their analysis on ARC tasks also found that outer-loop refinement drives performance, while the H/L split is not decisive. The pathfinding experiments here provide an additional supporting data point.
+These findings are consistent with the ARC Prize team’s analysis ([blog](https://arcprize.org/blog/hrm-analysis), [slides](https://docs.google.com/presentation/d/12IAuVKZXvbW6uCwzDhzN1PBh4fdjypjqyucYzoKJKMg/edit?slide=id.g32b23b2ea24_0_13#slide=id.g32b23b2ea24_0_13)), which also concluded that outer-loop refinement is the main driver of performance, not the H/L split.
 
 ### Iterative Refinement in Action
 When trained with more segments, the model reaches higher accuracy and better refines its predictions when given extra inference steps.
