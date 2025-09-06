@@ -67,7 +67,7 @@ All parameters are documented in `hrm/hrm.py`.
 
 Recent discussion around the Hierarchical Reasoning Model (HRM) asks whether it's the new two-timescale H/L architecture that drives the performance.
 
-To explore this, I ran a simple set of ablations on a **board pathfinding task** (20×20 boards, wall probability = 0.3). Each variant was trained on **2000 training boards** and validated on **500 boards**, for **40 epochs**. Models were parameter-matched: H/L variants used *d_model = 256* (~6.29M parameters), single-module variants used *d_model = 360* (~6.23M parameters).
+To explore this, I ran a simple set of ablations on a **board pathfinding task** (20×20 boards, wall probability = 0.3). Each variant was trained on 2000 training boards and validated on 500 boards, for 40 epochs. Models were parameter-matched: H/L variants used d_model=256 (~6.29M parameters), single-module variants used d_model=360 (~6.23M parameters).
 
 This is a small study on a relatively simple task, so the results should be taken as illustrative rather than definitive.
 
