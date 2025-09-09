@@ -1,6 +1,6 @@
 ## Hierarchical Reasoning Model (HRM)
 
-👉 See [**Ablation Study: What Drives HRM Performance?**](#ablation-study-what-drives-performance)
+👉 See [**Ablation Study: What Drives HRM Performance?**](#ablation-study-what-drives-hrm-performance)
 
 This is an implementation of the <a href="https://arxiv.org/abs/2506.21734">Hierachical Reasoning Model</a> (HRM) proposed by Guan Wang et al. I built it for educational purposes, with a few minor simplifications and extensions (see [Modifications to the Original Work](#modifications-to-the-original-work)).
 
